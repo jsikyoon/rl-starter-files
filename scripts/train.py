@@ -62,14 +62,35 @@ parser.add_argument("--recurrence", type=int, default=1,
 parser.add_argument("--text", action="store_true", default=False,
                     help="add a GRU to the model to handle text input")
 
+## Parameters for memory
+parser.add_argument("--mem_type", type=str, default='lstm',
+                    help="memory type: lstm | trxl | trxli | \
+                    gtrxl-input | gtrxl-output | gtrxl-highway | \
+                    gtrxl-SigmoidTanh | gtrxl-gru")
+parser.add_argument("--n_layer", type=int, default=5, help="TrXL layer num")
+parser.add_argument("--n_head", type=int, default=8, help="TrXL head num")
+parser.add_argument("--dropout", type=float, default=0.0, help="dropout rate")
+parser.add_argument("--mem_len", type=int, default=20, help="memory length")
+
 args = parser.parse_args()
 
-args.mem = args.recurrence > 1
+if 'trxl' in args.mem_type:
+    args.mem = True
+else:
+    args.mem = args.recurrence > 1
 
 # Set run dir
 
 date = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
-default_model_name = f"{args.env}_{args.algo}_seed{args.seed}_{date}"
+if args.recurrence == 1:
+    default_model_name = f"{args.env}_{args.algo}_seed{args.seed}_{date}"
+else:
+    if args.mem_type == 'lstm':
+        default_model_name = f"{args.env}_{args.algo}_{args.mem_type}{args.recurrence}_seed{args.seed}_{date}"
+    else:
+        default_model_name = f"{args.env}_{args.algo}_{args.mem_type}_"
+        default_model_name += f"Nlayer{args.n_layer}_MemLen{args.mem_len}_Nhead{args.n_head}_"
+        default_model_name += f"Dropout{args.dropout}_seed{args.seed}_{date}"
 
 model_name = args.model or default_model_name
 model_dir = utils.get_model_dir(model_name)
@@ -118,7 +139,8 @@ txt_logger.info("Observations preprocessor loaded")
 
 # Load model
 
-acmodel = ACModel(obs_space, envs[0].action_space, args.mem, args.text)
+acmodel = ACModel(obs_space, envs[0].action_space, args.mem, args.text,
+                  args.mem_type, args.n_layer, args.n_head, args.dropout, args.mem_len)
 if "model_state" in status:
     acmodel.load_state_dict(status["model_state"])
 acmodel.to(device)
@@ -130,11 +152,13 @@ txt_logger.info("{}\n".format(acmodel))
 if args.algo == "a2c":
     algo = torch_ac.A2CAlgo(envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
                             args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
-                            args.optim_alpha, args.optim_eps, preprocess_obss)
+                            args.optim_alpha, args.optim_eps, preprocess_obss,
+                            mem_type=args.mem_type, mem_len=args.mem_len, n_layer=args.n_layer)
 elif args.algo == "ppo":
     algo = torch_ac.PPOAlgo(envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
                             args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
-                            args.optim_eps, args.clip_eps, args.epochs, args.batch_size, preprocess_obss)
+                            args.optim_eps, args.clip_eps, args.epochs, args.batch_size, preprocess_obss,
+                            mem_type=args.mem_type, mem_len=args.mem_len, n_layer=args.n_layer)
 else:
     raise ValueError("Incorrect algorithm name: {}".format(args.algo))
 

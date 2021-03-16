@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from torch.distributions.categorical import Categorical
 import torch_ac
 
+from mem_transformer import MemTransformer
 
 # Function from https://github.com/ikostrikov/pytorch-a2c-ppo-acktr/blob/master/model.py
 def init_params(m):
@@ -16,12 +17,14 @@ def init_params(m):
 
 
 class ACModel(nn.Module, torch_ac.RecurrentACModel):
-    def __init__(self, obs_space, action_space, use_memory=False, use_text=False):
+    def __init__(self, obs_space, action_space, use_memory=False, use_text=False,
+                 mem_type='lstm', n_layer=5, n_head=8, dropout=0.0, mem_len=20):
         super().__init__()
 
         # Decide which components are enabled
         self.use_text = use_text
         self.use_memory = use_memory
+        self.mem_type = mem_type
 
         # Define image embedding
         self.image_conv = nn.Sequential(
@@ -39,7 +42,37 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
 
         # Define memory
         if self.use_memory:
-            self.memory_rnn = nn.LSTMCell(self.image_embedding_size, self.semi_memory_size)
+            if mem_type=='lstm':
+                self.memory_module = nn.LSTMCell(self.image_embedding_size, self.semi_memory_size)
+            elif 'trxl' in mem_type:
+                if mem_type=='trxl':
+                    self.memory_module = MemTransformer(
+                            self.image_embedding_size, n_layer=n_layer, n_head=n_head,
+                            d_model=self.semi_memory_size,
+                            d_head=self.semi_memory_size//n_head,
+                            d_inner=self.semi_memory_size,
+                            dropout=dropout, dropatt=dropout, pre_lnorm=False,
+                            tgt_len=1, ext_len=0, mem_len=mem_len, attn_type=0)
+                elif mem_type=='trxli':
+                    self.memory_module = MemTransformer(
+                            self.image_embedding_size, n_layer=n_layer, n_head=n_head,
+                            d_model=self.semi_memory_size,
+                            d_head=self.semi_memory_size//n_head,
+                            d_inner=self.semi_memory_size,
+                            dropout=dropout, dropatt=dropout, pre_lnorm=True,
+                            tgt_len=1, ext_len=0, mem_len=mem_len, attn_type=0)
+                elif 'gtrxl' in mem_type:
+                    self.memory_module = MemTransformer(
+                            self.image_embedding_size, n_layer=n_layer, n_head=n_head,
+                            d_model=self.semi_memory_size,
+                            d_head=self.semi_memory_size//n_head,
+                            d_inner=self.semi_memory_size,
+                            dropout=dropout, dropatt=dropout, pre_lnorm=True,
+                            tgt_len=1, ext_len=0, mem_len=mem_len, attn_type=0)
+                else:
+                    raise ValueError("The TrXL must be one of trxl, trxli and gtrxls")
+            else:
+                raise ValueError("The TrXL must be lstm or trxls")
 
         # Define text embedding
         if self.use_text:
@@ -84,10 +117,14 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
         x = x.reshape(x.shape[0], -1)
 
         if self.use_memory:
-            hidden = (memory[:, :self.semi_memory_size], memory[:, self.semi_memory_size:])
-            hidden = self.memory_rnn(x, hidden)
-            embedding = hidden[0]
-            memory = torch.cat(hidden, dim=1)
+            if self.mem_type=='lstm':
+                hidden = (memory[:, :self.semi_memory_size], memory[:, self.semi_memory_size:])
+                hidden = self.memory_module(x, hidden)
+                embedding = hidden[0]
+                memory = torch.cat(hidden, dim=1)
+            else:  # transformers
+                embedding, memory = self.memory_module(x.unsqueeze(0), *memory)
+                embedding = embedding[0]
         else:
             embedding = x
 
