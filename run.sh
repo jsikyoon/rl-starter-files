@@ -84,8 +84,6 @@ python docker_run.py $GPU_IDS $IMAGE $CONTAINER \
         --save-interval 10 \
         --frames 1000000
 
-END
-
 GPU_IDS='2'
 IMAGE='minigrid:latest'
 CONTAINER='PPO_TRXLMemlen20Nlayer7_RedBlueDoors6x6'
@@ -111,6 +109,64 @@ python docker_run.py $GPU_IDS $IMAGE $CONTAINER \
         --mem_type trxli \
         --mem_len 20 \
         --n_layer 7 \
+        --save-interval 10 \
+        --frames 1000000
+
+END
+
+GPU_IDS='1'
+IMAGE='minigrid:latest'
+CONTAINER='PPO_GTRXLGRUMemlen20Nlayer7_RedBlueDoors6x6'
+python docker_run.py $GPU_IDS $IMAGE $CONTAINER \
+    python3 -m scripts.train \
+        --algo ppo \
+        --env MiniGrid-RedBlueDoors-6x6-v0 \
+        --recurrence 1 \
+        --mem_type gtrxl-gru \
+        --mem_len 20 \
+        --n_layer 7 \
+        --save-interval 10 \
+        --frames 1000000
+
+GPU_IDS='2'
+IMAGE='minigrid:latest'
+CONTAINER='PPO_TRXLMemlen128Nlayer2_RedBlueDoors6x6'
+python docker_run.py $GPU_IDS $IMAGE $CONTAINER \
+    python3 -m scripts.train \
+        --algo ppo \
+        --env MiniGrid-RedBlueDoors-6x6-v0 \
+        --recurrence 1 \
+        --mem_type trxl \
+        --mem_len 128 \
+        --n_layer 2 \
+        --save-interval 10 \
+        --frames 1000000
+
+GPU_IDS='3'
+IMAGE='minigrid:latest'
+CONTAINER='PPO_TRXLiMemlen128Nlayer2_RedBlueDoors6x6'
+python docker_run.py $GPU_IDS $IMAGE $CONTAINER \
+    python3 -m scripts.train \
+        --algo ppo \
+        --env MiniGrid-RedBlueDoors-6x6-v0 \
+        --recurrence 1 \
+        --mem_type trxli \
+        --mem_len 128 \
+        --n_layer 2 \
+        --save-interval 10 \
+        --frames 1000000
+
+GPU_IDS='4'
+IMAGE='minigrid:latest'
+CONTAINER='PPO_GTRXLGRUMemlen128Nlayer2_RedBlueDoors6x6'
+python docker_run.py $GPU_IDS $IMAGE $CONTAINER \
+    python3 -m scripts.train \
+        --algo ppo \
+        --env MiniGrid-RedBlueDoors-6x6-v0 \
+        --recurrence 1 \
+        --mem_type gtrxl-gru \
+        --mem_len 128 \
+        --n_layer 2 \
         --save-interval 10 \
         --frames 1000000
 

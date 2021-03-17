@@ -12,6 +12,120 @@ import torch.nn.functional as F
 #from proj_adaptive_softmax import ProjectedAdaptiveLogSoftmax
 #from log_uniform_sampler import LogUniformSampler, sample_logits
 
+class GatePlus(nn.Module):
+    def __init__(self):
+        super(GatePlus, self).__init__()
+
+    def forward(self, y, x):
+        return y + x
+
+
+# \sig(W_g^l.*x)*x + y
+class GateInput(nn.Module):
+    def __init__(self, d_model):
+        super(GateInput, self).__init__()
+
+        self.layer = nn.Sequential(
+                nn.Linear(d_model, d_model, bias=False),
+                nn.Sigmoid()
+        )
+
+    def forward(self, y, x):
+        return torch.mul(self.layer(x), x) + y
+
+
+# x + \sig(W_g^l.*x -b_g^l)*y
+class GateOutput(nn.Module):
+    def __init__(self, d_model):
+        super(GateOutput, self).__init__()
+
+        self.layer = nn.Sequential(
+                nn.Linear(d_model, d_model, bias=False),
+                nn.Sigmoid()
+        )
+
+    def forward(self, y, x):
+        return x + torch.mul(self.layer(x), y)
+
+
+#\sig(W_g^l.*x+b_g^l)*x + (1-\sig(W_g^l.*x+b_g^l))*y
+class GateHighway(nn.Module):
+    def __init__(self, d_model):
+        super(GateHighway, self).__init__()
+
+        self.layer = nn.Sequential(
+                nn.Linear(d_model, d_model, bias=False),
+                nn.Sigmoid()
+        )
+
+    def forward(self, y, x):
+        _x = self.layer(x)
+        return torch.mul(_x, x) + torch.mul(1-_x, y)
+
+
+# x + \sig(W_g^l.*x-b_g^l)*\tanh(U_g^l.*y)
+class GateSigmoidTanh(nn.Module):
+    def __init__(self, d_model):
+        super(GateSigmoidTanh, self).__init__()
+
+        self.layer_W = nn.Sequential(
+                nn.Linear(d_model, d_model),
+                nn.Sigmoid()
+        )
+        self.layer_U = nn.Sequential(
+                nn.Linear(d_model, d_model, bias=False),
+                nn.Tanh()
+        )
+
+    def forward(self, y, x):
+        return x + torch.mul(self.layer_W(x), self.layer_U(y))
+
+
+class GateGRU(nn.Module):
+    def __init__(self, d_model):
+        super(GateGRU, self).__init__()
+
+        self.layer_r = nn.Sequential(
+                nn.Linear(d_model*2, d_model, bias=False),
+                nn.Sigmoid()
+        )
+        self.layer_z = nn.Sequential(
+                nn.Linear(d_model*2, d_model),
+                nn.Sigmoid()
+        )
+        self.layer_h = nn.Sequential(
+                nn.Linear(d_model*2, d_model, bias=False),
+                nn.Tanh()
+        )
+
+    def forward(self, y, x):
+        r = self.layer_r(torch.cat([y, x], dim=-1))
+        z = self.layer_z(torch.cat([y, x], dim=-1))
+        h = self.layer_h(torch.cat([y, torch.mul(r, x)], dim=-1))
+        return torch.mul(1-z, x) + torch.mul(z, h)
+
+
+class Gate(nn.Module):
+    def __init__(self, d_model, gate='plus'):
+        super(Gate, self).__init__()
+
+        if gate == 'plus':
+            self.gate = GatePlus()
+        elif gate == 'input':
+            self.gate = GateInput(d_model)
+        elif gate == 'output':
+            self.gate = GateOutput(d_model)
+        elif gate == 'highway':
+            self.gate = GateHighway(d_model)
+        elif gate == 'sigmoidtanh':
+            self.gate = GateSigmoidTanh(d_model)
+        elif gate == 'gru':
+            self.gate = GateGRU(d_model)
+
+    def forward(self, y, x):
+        return self.gate(y, x)
+
+
 class PositionalEmbedding(nn.Module):
     def __init__(self, demb):
         super(PositionalEmbedding, self).__init__()
@@ -32,7 +146,7 @@ class PositionalEmbedding(nn.Module):
 
 
 class PositionwiseFF(nn.Module):
-    def __init__(self, d_model, d_inner, dropout, pre_lnorm=False):
+    def __init__(self, d_model, d_inner, dropout, pre_lnorm=False, gate='plus'):
         super(PositionwiseFF, self).__init__()
 
         self.d_model = d_model
@@ -46,6 +160,8 @@ class PositionwiseFF(nn.Module):
             nn.Dropout(dropout),
         )
 
+        self.GateNet = Gate(d_model, gate)
+
         self.layer_norm = nn.LayerNorm(d_model)
 
         self.pre_lnorm = pre_lnorm
@@ -56,7 +172,7 @@ class PositionwiseFF(nn.Module):
             core_out = self.CoreNet(self.layer_norm(inp))
 
             ##### residual connection
-            output = core_out + inp
+            output = self.GateNet(core_out, inp)
         else:
             ##### positionwise feed-forward
             core_out = self.CoreNet(inp)
@@ -68,7 +184,7 @@ class PositionwiseFF(nn.Module):
 
 class MultiHeadAttn(nn.Module):
     def __init__(self, n_head, d_model, d_head, dropout, dropatt=0,
-                 pre_lnorm=False):
+                 pre_lnorm=False, gate='plus'):
         super(MultiHeadAttn, self).__init__()
 
         self.n_head = n_head
@@ -88,6 +204,8 @@ class MultiHeadAttn(nn.Module):
         self.scale = 1 / (d_head ** 0.5)
 
         self.pre_lnorm = pre_lnorm
+
+        self.gate_net = Gate(d_model, gate)
 
     def forward(self, h, attn_mask=None, mems=None):
         ##### multihead attention
@@ -133,7 +251,7 @@ class MultiHeadAttn(nn.Module):
 
         if self.pre_lnorm:
             ##### residual connection
-            output = h + attn_out
+            output = self.gate_net(attn_out, h)
         else:
             ##### residual connection + layer normalization
             output = self.layer_norm(h + attn_out)
@@ -142,7 +260,8 @@ class MultiHeadAttn(nn.Module):
 
 class RelMultiHeadAttn(nn.Module):
     def __init__(self, n_head, d_model, d_head, dropout, dropatt=0,
-                 tgt_len=None, ext_len=None, mem_len=None, pre_lnorm=False):
+                 tgt_len=None, ext_len=None, mem_len=None, pre_lnorm=False,
+                 gate='plus'):
         super(RelMultiHeadAttn, self).__init__()
 
         self.n_head = n_head
@@ -161,6 +280,8 @@ class RelMultiHeadAttn(nn.Module):
         self.scale = 1 / (d_head ** 0.5)
 
         self.pre_lnorm = pre_lnorm
+
+        self.gate = gate
 
     def _parallelogram_mask(self, h, w, left=False):
         mask = torch.ones((h, w)).byte()
@@ -213,6 +334,7 @@ class RelPartialLearnableMultiHeadAttn(RelMultiHeadAttn):
     def __init__(self, *args, **kwargs):
         super(RelPartialLearnableMultiHeadAttn, self).__init__(*args, **kwargs)
 
+        self.gate_net = Gate(self.d_model, self.gate)
         self.r_net = nn.Linear(self.d_model, self.n_head * self.d_head, bias=False)
 
     def forward(self, w, r, r_w_bias, r_r_bias, attn_mask=None, mems=None):
@@ -284,7 +406,7 @@ class RelPartialLearnableMultiHeadAttn(RelMultiHeadAttn):
 
         if self.pre_lnorm:
             ##### residual connection
-            output = w + attn_out
+            output = self.gate_net(attn_out, w)
         else:
             ##### residual connection + layer normalization
             output = self.layer_norm(w + attn_out)
@@ -382,7 +504,8 @@ class DecoderLayer(nn.Module):
 
         self.dec_attn = MultiHeadAttn(n_head, d_model, d_head, dropout, **kwargs)
         self.pos_ff = PositionwiseFF(d_model, d_inner, dropout,
-                                     pre_lnorm=kwargs.get('pre_lnorm'))
+                                     pre_lnorm=kwargs.get('pre_lnorm'),
+                                     gate=kwargs.get('gate'))
 
     def forward(self, dec_inp, dec_attn_mask=None, mems=None):
 
@@ -400,7 +523,8 @@ class RelLearnableDecoderLayer(nn.Module):
         self.dec_attn = RelLearnableMultiHeadAttn(n_head, d_model, d_head, dropout,
                                          **kwargs)
         self.pos_ff = PositionwiseFF(d_model, d_inner, dropout,
-                                     pre_lnorm=kwargs.get('pre_lnorm'))
+                                     pre_lnorm=kwargs.get('pre_lnorm'),
+                                     gate=kwargs.get('gate'))
 
     def forward(self, dec_inp, r_emb, r_w_bias, r_bias, dec_attn_mask=None, mems=None):
 
@@ -419,7 +543,8 @@ class RelPartialLearnableDecoderLayer(nn.Module):
         self.dec_attn = RelPartialLearnableMultiHeadAttn(n_head, d_model,
                             d_head, dropout, **kwargs)
         self.pos_ff = PositionwiseFF(d_model, d_inner, dropout,
-                                     pre_lnorm=kwargs.get('pre_lnorm'))
+                                     pre_lnorm=kwargs.get('pre_lnorm'),
+                                     gate=kwargs.get('gate'))
 
     def forward(self, dec_inp, r, r_w_bias, r_r_bias, dec_attn_mask=None, mems=None):
 
@@ -497,7 +622,7 @@ class MemTransformer(nn.Module):
     def __init__(self, d_inp, n_layer, n_head, d_model, d_head, d_inner,
                  dropout, dropatt, pre_lnorm=False,
                  tgt_len=None, ext_len=None, mem_len=None,
-                 same_length=False, attn_type=0, clamp_len=-1):
+                 same_length=False, attn_type=0, clamp_len=-1, gate='plus'):
         super(MemTransformer, self).__init__()
 
         self.d_inp = d_inp
@@ -530,7 +655,7 @@ class MemTransformer(nn.Module):
                     RelPartialLearnableDecoderLayer(
                         n_head, d_model, d_head, d_inner, dropout,
                         tgt_len=tgt_len, ext_len=ext_len, mem_len=mem_len,
-                        dropatt=dropatt, pre_lnorm=pre_lnorm)
+                        dropatt=dropatt, pre_lnorm=pre_lnorm, gate=gate)
                 )
         elif attn_type == 1: # learnable embeddings
             for i in range(n_layer):
@@ -538,14 +663,14 @@ class MemTransformer(nn.Module):
                     RelLearnableDecoderLayer(
                         n_head, d_model, d_head, d_inner, dropout,
                         tgt_len=tgt_len, ext_len=ext_len, mem_len=mem_len,
-                        dropatt=dropatt, pre_lnorm=pre_lnorm)
+                        dropatt=dropatt, pre_lnorm=pre_lnorm, gate=gate)
                 )
         elif attn_type in [2, 3]: # absolute embeddings
             for i in range(n_layer):
                 self.layers.append(
                     DecoderLayer(
                         n_head, d_model, d_head, d_inner, dropout,
-                        dropatt=dropatt, pre_lnorm=pre_lnorm)
+                        dropatt=dropatt, pre_lnorm=pre_lnorm, gate=gate)
                 )
 
         self.same_length = same_length
@@ -733,7 +858,6 @@ if __name__ == '__main__':
     parser.add_argument('--dropout', type=float, default=0.0, help='')
     parser.add_argument('--cuda', action='store_true', help='')
     parser.add_argument('--seed', type=int, default=1111, help='')
-    parser.add_argument('--multi_gpu', action='store_true', help='')
 
     args = parser.parse_args()
 
@@ -744,22 +868,33 @@ if __name__ == '__main__':
 
     data = torch.rand(100, B, args.d_inp)
 
-    model = MemTransformer(args.d_inp, args.n_layer, args.n_head,
-                    args.d_model, args.d_head, args.d_inner, args.dropout,
-                    dropatt=args.dropout, pre_lnorm=True,
-                    tgt_len=tgt_len, ext_len=ext_len, mem_len=mem_len,
-                    attn_type=0).to(device)
+    for attn_type in [0, 1, 2]:
+        for gate in ['plus', 'input', 'output', 'highway', 'sigmoidtanh', 'gru']:
+            model = MemTransformer(args.d_inp, args.n_layer, args.n_head,
+                            args.d_model, args.d_head, args.d_inner, args.dropout,
+                            dropatt=args.dropout, pre_lnorm=True,
+                            tgt_len=tgt_len, ext_len=ext_len, mem_len=mem_len,
+                            attn_type=attn_type, gate=gate).to(device)
 
-    print(sum(p.numel() for p in model.parameters()))
+            print('attn_type:',attn_type, ',gate:', gate, ',param nums:', sum(p.numel() for p in model.parameters()))
 
-    #mems = tuple()
-    #for i in range(tgt_len+mem_len+ext_len, len(data)):
-    #    pred, mems = model(data[i-(tgt_len+mem_len+ext_len):i], *mems)
-    #    print(pred.shape, len(mems), mems[0].shape)
+            mems = torch.zeros(args.n_layer+1, mem_len, B, args.d_model)
+            for i in range(len(data)):
+                _data = data[i:(i+1)]
+                pred, mems = model(_data, *mems)
 
-    mems = torch.zeros(args.n_layer+1, mem_len, B, args.d_model)
-    for i in range(len(data)):
-        _data = data[i:(i+1)]
-        pred, mems = model(_data, *mems)
-        print(i, _data.shape, pred.shape, len(mems), mems[0].shape)
+            if gate == 'plus':
+                model = MemTransformer(args.d_inp, args.n_layer, args.n_head,
+                                args.d_model, args.d_head, args.d_inner, args.dropout,
+                                dropatt=args.dropout, pre_lnorm=False,
+                                tgt_len=tgt_len, ext_len=ext_len, mem_len=mem_len,
+                                attn_type=attn_type, gate=gate).to(device)
+
+                print('attn_type:',attn_type, ',gate:', gate, ',param nums:', sum(p.numel() for p in model.parameters()))
+
+                mems = torch.zeros(args.n_layer+1, mem_len, B, args.d_model)
+                for i in range(len(data)):
+                    _data = data[i:(i+1)]
+                    pred, mems = model(_data, *mems)
+
 

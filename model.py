@@ -62,13 +62,15 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
                             dropout=dropout, dropatt=dropout, pre_lnorm=True,
                             tgt_len=1, ext_len=0, mem_len=mem_len, attn_type=0)
                 elif 'gtrxl' in mem_type:
+                    gate = mem_type.split('-')[1]
                     self.memory_module = MemTransformer(
                             self.image_embedding_size, n_layer=n_layer, n_head=n_head,
                             d_model=self.semi_memory_size,
                             d_head=self.semi_memory_size//n_head,
                             d_inner=self.semi_memory_size,
                             dropout=dropout, dropatt=dropout, pre_lnorm=True,
-                            tgt_len=1, ext_len=0, mem_len=mem_len, attn_type=0)
+                            tgt_len=1, ext_len=0, mem_len=mem_len, attn_type=0,
+                            gate=gate)
                 else:
                     raise ValueError("The TrXL must be one of trxl, trxli and gtrxls")
             else:

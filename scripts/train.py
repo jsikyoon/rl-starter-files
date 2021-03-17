@@ -66,7 +66,7 @@ parser.add_argument("--text", action="store_true", default=False,
 parser.add_argument("--mem_type", type=str, default='lstm',
                     help="memory type: lstm | trxl | trxli | \
                     gtrxl-input | gtrxl-output | gtrxl-highway | \
-                    gtrxl-SigmoidTanh | gtrxl-gru")
+                    gtrxl-sigmoidtanh | gtrxl-gru")
 parser.add_argument("--n_layer", type=int, default=5, help="TrXL layer num")
 parser.add_argument("--n_head", type=int, default=8, help="TrXL head num")
 parser.add_argument("--dropout", type=float, default=0.0, help="dropout rate")
