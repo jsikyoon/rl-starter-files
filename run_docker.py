@@ -8,20 +8,21 @@ from datetime import datetime
 img_name = 'minigrid:latest'
 
 ## gpu
-gpu_ids = '3'
+gpu_ids = '2'
 
 ## algo
 algo = ['ppo']
 
 ## env
-env = ['MiniGrid-RedBlueDoors-8x8-v0']
+env = ['MiniGrid-RedBlueDoors-6x6-v0']
+#env = ['MiniGrid-MemoryS13Random-v0']
 
 ## mem
 mem_type = ['trxl', 'trxli', 'gtrxl-gru']
 #mem_type = ['lstm']
 mem_len = [128]
-n_layer = [2]
-recurrence = [64, 128]
+n_layer = [5]
+recurrence = [1]
 
 ## etc
 save_interval = 10
@@ -42,7 +43,7 @@ volumn_options = " ".join(volumn_options) + " "
 
 def run (algo, env, mem_type, mem_len, n_layer, rec):
     if mem_type == 'lstm':
-        cont_name = '_'.join([algo, mem_type+str(rec), env])
+        cont_name = '_'.join([algo, mem_type+'Rec'+str(rec), env])
     elif 'trxl' in mem_type:
         cont_name = '_'.join([algo,
             mem_type+'Memlen'+str(mem_len)+'Nlayer'+str(n_layer)+'Rec'+str(rec),

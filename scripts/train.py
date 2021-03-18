@@ -84,7 +84,7 @@ else:
 date = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
 if args.mem:
     if args.mem_type == 'lstm':
-        default_model_name = f"{args.env}_{args.algo}_{args.mem_type}{args.recurrence}_seed{args.seed}_{date}"
+        default_model_name = f"{args.env}_{args.algo}_{args.mem_type}_Rec{args.recurrence}_seed{args.seed}_{date}"
     else:
         default_model_name = f"{args.env}_{args.algo}_{args.mem_type}_Rec{args.recurrence}_"
         default_model_name += f"Nlayer{args.n_layer}_MemLen{args.mem_len}_Nhead{args.n_head}_"
