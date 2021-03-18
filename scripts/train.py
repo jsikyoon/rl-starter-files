@@ -82,15 +82,15 @@ else:
 # Set run dir
 
 date = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
-if args.recurrence == 1:
-    default_model_name = f"{args.env}_{args.algo}_seed{args.seed}_{date}"
-else:
+if args.mem:
     if args.mem_type == 'lstm':
         default_model_name = f"{args.env}_{args.algo}_{args.mem_type}{args.recurrence}_seed{args.seed}_{date}"
     else:
-        default_model_name = f"{args.env}_{args.algo}_{args.mem_type}_"
+        default_model_name = f"{args.env}_{args.algo}_{args.mem_type}_Rec{args.recurrence}_"
         default_model_name += f"Nlayer{args.n_layer}_MemLen{args.mem_len}_Nhead{args.n_head}_"
         default_model_name += f"Dropout{args.dropout}_seed{args.seed}_{date}"
+else:
+    default_model_name = f"{args.env}_{args.algo}_seed{args.seed}_{date}"
 
 model_name = args.model or default_model_name
 model_dir = utils.get_model_dir(model_name)
