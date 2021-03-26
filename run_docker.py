@@ -8,25 +8,31 @@ from datetime import datetime
 img_name = 'minigrid:latest'
 
 ## gpu
-gpu_ids = '2'
+gpu_ids = '4'
 
 ## algo
 algo = ['ppo']
+#algo = ['a2c']
 
 ## env
-env = ['MiniGrid-RedBlueDoors-6x6-v0']
+#env = ['MiniGrid-RedBlueDoors-8x8-v0']
 #env = ['MiniGrid-MemoryS13Random-v0']
+env = ['MiniGrid-MemoryS11-v0']
 
 ## mem
 mem_type = ['trxl', 'trxli', 'gtrxl-gru']
 #mem_type = ['lstm']
-mem_len = [128]
-n_layer = [5]
-recurrence = [1]
+mem_len = [4]
+n_layer = [1]
+recurrence = [1] # transformer
+#recurrence = [4, 8, 16, 32, 64] # lstm
 
 ## etc
 save_interval = 10
-frames = 1000000
+frames = 100000000
+#lr = 0.001 # lstm
+lr = 0.0001 # transformer
+frames_per_proc = 128
 
 ###############################################################################
 # Volumn options
@@ -43,10 +49,12 @@ volumn_options = " ".join(volumn_options) + " "
 
 def run (algo, env, mem_type, mem_len, n_layer, rec):
     if mem_type == 'lstm':
-        cont_name = '_'.join([algo, mem_type+'Rec'+str(rec), env])
+        cont_name = '_'.join([algo, mem_type+'Rec'+str(rec), 'Lr'+str(lr),
+            'FPP'+str(frames_per_proc), 'Frames'+str(frames), env])
     elif 'trxl' in mem_type:
         cont_name = '_'.join([algo,
             mem_type+'Memlen'+str(mem_len)+'Nlayer'+str(n_layer)+'Rec'+str(rec),
+            'Lr'+str(lr), 'FPP'+str(frames_per_proc), 'Frames'+str(frames),
             env])
     else:
         raise ValueError
@@ -59,7 +67,9 @@ def run (algo, env, mem_type, mem_len, n_layer, rec):
             --mem_len {mem_len} \
             --n_layer {n_layer} \
             --save-interval {save_interval} \
-            --frames {frames}'
+            --frames {frames} \
+            --lr {lr} \
+            --frames-per-proc {frames_per_proc}'
 
     command = 'docker run -d '
     command += volumn_options
