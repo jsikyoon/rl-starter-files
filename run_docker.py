@@ -8,30 +8,35 @@ from datetime import datetime
 img_name = 'minigrid:latest'
 
 ## gpu
-gpu_ids = '4'
+gpu_ids = '3'
 
 ## algo
 algo = ['ppo']
 #algo = ['a2c']
 
 ## env
-#env = ['MiniGrid-RedBlueDoors-8x8-v0']
+env = ['MiniGrid-RedBlueDoors-6x6-v0']
 #env = ['MiniGrid-MemoryS13Random-v0']
-env = ['MiniGrid-MemoryS11-v0']
+#env = ['MiniGrid-MemoryS11-v0']
 
 ## mem
-mem_type = ['trxl', 'trxli', 'gtrxl-gru']
-#mem_type = ['lstm']
+#mem_type = ['trxl', 'trxli', 'gtrxl-gru']
+mem_type = ['lstm']
 mem_len = [4]
 n_layer = [1]
-recurrence = [1] # transformer
-#recurrence = [4, 8, 16, 32, 64] # lstm
+#recurrence = [1] # transformer
+recurrence = [4, 8, 16, 32, 64] # lstm
+
+## dreamer
+loss_type = 'all'
+#loss_type = 'rep-ppo'
+#loss_type = 'rep-img'
 
 ## etc
 save_interval = 10
-frames = 100000000
-#lr = 0.001 # lstm
-lr = 0.0001 # transformer
+frames = 10000000
+lr = 0.001 # lstm
+#lr = 0.0001 # transformer
 frames_per_proc = 128
 
 ###############################################################################
@@ -49,10 +54,10 @@ volumn_options = " ".join(volumn_options) + " "
 
 def run (algo, env, mem_type, mem_len, n_layer, rec):
     if mem_type == 'lstm':
-        cont_name = '_'.join([algo, mem_type+'Rec'+str(rec), 'Lr'+str(lr),
-            'FPP'+str(frames_per_proc), 'Frames'+str(frames), env])
+        cont_name = '_'.join(['Dreamer-'+algo, loss_type, mem_type+'Rec'+str(rec),
+            'Lr'+str(lr), 'FPP'+str(frames_per_proc), 'Frames'+str(frames), env])
     elif 'trxl' in mem_type:
-        cont_name = '_'.join([algo,
+        cont_name = '_'.join(['Dreamer-'+algo, loss_type,
             mem_type+'Memlen'+str(mem_len)+'Nlayer'+str(n_layer)+'Rec'+str(rec),
             'Lr'+str(lr), 'FPP'+str(frames_per_proc), 'Frames'+str(frames),
             env])
@@ -69,7 +74,8 @@ def run (algo, env, mem_type, mem_len, n_layer, rec):
             --save-interval {save_interval} \
             --frames {frames} \
             --lr {lr} \
-            --frames-per-proc {frames_per_proc}'
+            --frames-per-proc {frames_per_proc} \
+            --loss_type {loss_type}'
 
     command = 'docker run -d '
     command += volumn_options

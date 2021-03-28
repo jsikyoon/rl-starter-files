@@ -72,6 +72,13 @@ parser.add_argument("--n_head", type=int, default=8, help="TrXL head num")
 parser.add_argument("--dropout", type=float, default=0.0, help="dropout rate")
 parser.add_argument("--mem_len", type=int, default=20, help="memory length")
 
+
+## Parameters for dreamer
+parser.add_argument("--beta_rep_kl", type=float, default=0.1, help="beta for KL term")
+parser.add_argument("--n_imagine", type=int, default=5, help="the number of imaginary step")
+parser.add_argument("--loss_type", type=str, default='all',
+                    help="loss type: all | rep-ppo | rep-img")
+
 args = parser.parse_args()
 
 if 'trxl' in args.mem_type:
@@ -79,19 +86,25 @@ if 'trxl' in args.mem_type:
 else:
     args.mem = args.recurrence > 1
 
+# dreamer requires memory
+
+if args.mem_type=='lstm' and args.recurrence==1:
+    raise ValueError("Dreamer requires memory module.")
+
 # Set run dir
 
 date = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
 if args.mem:
     if args.mem_type == 'lstm':
-        default_model_name = f"{args.env}_{args.algo}_{args.mem_type}_Rec{args.recurrence}_Lr{args.lr}_"
-        default_model_name += f"_FPP{args.frames_per_proc}_seed{args.seed}_{date}"
+        default_model_name = f"{args.env}_Dreamer_{args.algo}_{args.loss_type}_{args.mem_type}_"
+        default_model_name += f"Rec{args.recurrence}_Lr{args.lr}_FPP{args.frames_per_proc}_seed{args.seed}_{date}"
     else:
-        default_model_name = f"{args.env}_{args.algo}_{args.mem_type}_"
+        default_model_name = f"{args.env}_Dreamer_{args.algo}_{args.loss_type}_{args.mem_type}_"
         default_model_name += f"Nlayer{args.n_layer}_MemLen{args.mem_len}_"
         default_model_name += f"Lr{args.lr}_FPP{args.frames_per_proc}_seed{args.seed}_{date}"
 else:
-    default_model_name = f"{args.env}_{args.algo}_seed{args.seed}_{date}"
+    raise ValueError("Dreamer requires memory module.")
+    #default_model_name = f"{args.env}_{args.algo}_seed{args.seed}_{date}"
 
 model_name = args.model or default_model_name
 model_dir = utils.get_model_dir(model_name)
@@ -141,7 +154,8 @@ txt_logger.info("Observations preprocessor loaded")
 # Load model
 
 acmodel = ACModel(obs_space, envs[0].action_space, args.mem, args.text,
-                  args.mem_type, args.n_layer, args.n_head, args.dropout, args.mem_len)
+                  args.mem_type, args.n_layer, args.n_head, args.dropout, args.mem_len,
+                  args.beta_rep_kl, args.n_imagine)
 if "model_state" in status:
     acmodel.load_state_dict(status["model_state"])
 acmodel.to(device)
@@ -159,7 +173,7 @@ elif args.algo == "ppo":
     algo = torch_ac.PPOAlgo(envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
                             args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
                             args.optim_eps, args.clip_eps, args.epochs, args.batch_size, preprocess_obss,
-                            mem_type=args.mem_type, mem_len=args.mem_len, n_layer=args.n_layer)
+                            mem_type=args.mem_type, mem_len=args.mem_len, n_layer=args.n_layer, loss_type=args.loss_type)
 else:
     raise ValueError("Incorrect algorithm name: {}".format(args.algo))
 
@@ -202,6 +216,12 @@ while num_frames < args.frames:
         data += num_frames_per_episode.values()
         header += ["entropy", "value", "policy_loss", "value_loss", "grad_norm"]
         data += [logs["entropy"], logs["value"], logs["policy_loss"], logs["value_loss"], logs["grad_norm"]]
+
+        header += ["rep_loss_total", "rep_loss_recon", "rep_loss_reward", "rep_loss_kl"]
+        data += [logs["rep_loss"], logs["recon_loss"], logs["reward_loss"], logs["kl_loss"]]
+
+        header += ["img_loss_total", "img_loss_policy", "img_loss_value"]
+        data += [logs["img_loss"], logs["img_policy_loss"], logs["img_value_loss"]]
 
         txt_logger.info(
             "U {} | F {:06} | FPS {:04.0f} | D {} | rR:μσmM {:.2f} {:.2f} {:.2f} {:.2f} | F:μσmM {:.1f} {:.1f} {} {} | H {:.3f} | V {:.3f} | pL {:.3f} | vL {:.3f} | ∇ {:.3f}"
