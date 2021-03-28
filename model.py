@@ -251,7 +251,7 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
 
             # imagine
             img_state = prior
-            img_memory = memory.clone()
+            img_memory = memory
             for i in range(self.n_imagine):
                 img_mem_inp = torch.cat([img_actions[-1].unsqueeze(-1), img_state], dim=-1)
                 if self.mem_type=='lstm':
@@ -286,7 +286,7 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
             gamma = 0.99
             _lambda = 0.95
             for i in range(self.n_imagine+1):
-                _Vns = []
+                _Vns = [0] # first element is not used
                 for j in range(1, self.n_imagine+1):
                     h = min(i+j, self.n_imagine)
                     _Vn = 0
@@ -296,7 +296,7 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
                     _Vns.append(_Vn)
                 _img_V = 0
                 for j in range(1, self.n_imagine):
-                    _img_V += _lambda**(j-1)*_Vns[j-1]
+                    _img_V += _lambda**(j-1)*_Vns[j]
                 img_Vs.append((1-_lambda)*_img_V + _lambda**(self.n_imagine-1)*_Vns[-1])
 
             # imaginary policy loss

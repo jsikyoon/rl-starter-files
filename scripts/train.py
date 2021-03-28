@@ -77,7 +77,7 @@ parser.add_argument("--mem_len", type=int, default=20, help="memory length")
 parser.add_argument("--beta_rep_kl", type=float, default=0.1, help="beta for KL term")
 parser.add_argument("--n_imagine", type=int, default=5, help="the number of imaginary step")
 parser.add_argument("--loss_type", type=str, default='all',
-                    help="loss type: all | rep-ppo | rep-img")
+                    help="loss type: all | rep-agent | rep-img")
 
 args = parser.parse_args()
 
@@ -168,7 +168,7 @@ if args.algo == "a2c":
     algo = torch_ac.A2CAlgo(envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
                             args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
                             args.optim_alpha, args.optim_eps, preprocess_obss,
-                            mem_type=args.mem_type, mem_len=args.mem_len, n_layer=args.n_layer)
+                            mem_type=args.mem_type, mem_len=args.mem_len, n_layer=args.n_layer, loss_type=args.loss_type)
 elif args.algo == "ppo":
     algo = torch_ac.PPOAlgo(envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
                             args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,

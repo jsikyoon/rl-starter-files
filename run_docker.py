@@ -11,8 +11,8 @@ img_name = 'minigrid:latest'
 gpu_ids = '3'
 
 ## algo
-algo = ['ppo']
-#algo = ['a2c']
+#algo = 'ppo'
+algo = 'a2c'
 
 ## env
 env = ['MiniGrid-RedBlueDoors-6x6-v0']
@@ -21,23 +21,33 @@ env = ['MiniGrid-RedBlueDoors-6x6-v0']
 
 ## mem
 #mem_type = ['trxl', 'trxli', 'gtrxl-gru']
-mem_type = ['lstm']
-mem_len = [4]
-n_layer = [1]
 #recurrence = [1] # transformer
-recurrence = [4, 8, 16, 32, 64] # lstm
+mem_type = ['lstm']
+#recurrence = [4, 8, 16, 32, 64] # lstm
+recurrence = [4] # lstm
+mem_len = [64]
+n_layer = [2]
 
 ## dreamer
 loss_type = 'all'
-#loss_type = 'rep-ppo'
+#loss_type = 'rep-agent'
 #loss_type = 'rep-img'
 
 ## etc
 save_interval = 10
 frames = 10000000
-lr = 0.001 # lstm
-#lr = 0.0001 # transformer
-frames_per_proc = 128
+
+if mem_type[0] == 'lstm':
+    lr = 0.001 # lstm
+else:
+    lr = 0.0001 # transformer
+
+if algo == 'ppo':
+    frames_per_proc = 128 # ppo
+elif algo == 'a2c':
+    frames_per_proc = 8 # a2c
+else:
+    raise ValueError
 
 ###############################################################################
 # Volumn options
@@ -94,11 +104,10 @@ def run (algo, env, mem_type, mem_len, n_layer, rec):
     print(command)
     os.system(command)
 
-for _algo in algo:
-    for _env in env:
-        for _rec in recurrence:
-            for _mem_type in mem_type:
-                for _mem_len in mem_len:
-                    for _n_layer in n_layer:
-                        run(_algo, _env, _mem_type, _mem_len, _n_layer, _rec)
+for _env in env:
+    for _rec in recurrence:
+        for _mem_type in mem_type:
+            for _mem_len in mem_len:
+                for _n_layer in n_layer:
+                    run(algo, _env, _mem_type, _mem_len, _n_layer, _rec)
 
