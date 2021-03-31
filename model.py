@@ -20,7 +20,8 @@ def init_params(m):
 class ACModel(nn.Module, torch_ac.RecurrentACModel):
     def __init__(self, obs_space, action_space, use_memory=False, use_text=False,
                  mem_type='lstm', n_layer=5, n_head=8, dropout=0.0, mem_len=20,
-                 beta_rep_kl=1.0, n_imagine=5):
+                 beta_rep_kl=1.0, n_imagine=5, loss_type='agent-rep-img',
+                 combine_loss=False):
         super().__init__()
 
         # Decide which components are enabled
@@ -29,6 +30,8 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
         self.mem_type = mem_type
         self.beta_rep_kl = beta_rep_kl
         self.n_imagine = n_imagine
+        self.loss_type = loss_type.split('-')
+        self.combine_loss = combine_loss
 
         # Define image embedding
         self.image_conv = nn.Sequential(
@@ -129,11 +132,11 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
                 nn.ReLU(),
                 nn.ConvTranspose2d(32, 16, (3,3)),
                 nn.ReLU(),
-                nn.ConvTranspose2d(16, 8, (3,3)),
-                nn.ReLU(),
-                nn.Conv2d(8, 32, (1,1)),
-                nn.ReLU(),
-                nn.Conv2d(32, 20, (1,1)), # color_idx: 6, obj_idx: 11, state_idx: 3
+                nn.ConvTranspose2d(16, 20, (3,3)),
+                #nn.ReLU(),
+                #nn.Conv2d(8, 32, (1,1)),
+                #nn.ReLU(),
+                #nn.Conv2d(32, 20, (1,1)), # color_idx: 6, obj_idx: 11, state_idx: 3
         )
 
         # Define reward decoder
@@ -184,8 +187,8 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
             #embedding = x
 
         # q(s_t | s_{t-1}, a_{t-1}, o_t)
-        embedding = torch.cat([embedding, x], dim=-1)
-        post_mean, post_std = self.post_net(embedding).split(
+        post_mean, post_std = self.post_net(
+                torch.cat([embedding, x], dim=-1)).split(
                 (self.semi_memory_size, self.semi_memory_size), dim=-1)
         post_std = F.softplus(post_std) + 0.1
         post_dist = Normal(post_mean, post_std)
@@ -205,9 +208,33 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
 
             # [bs*7*7,6], [bs*7*7,11], [bs*7*7,3]
             [pred_col, pred_obj, pred_state] = pred_img.split((6,11,3), dim=1)
-            pred_col = F.softmax(pred_col.permute(0,2,3,1).reshape(-1, 6), dim=-1)
-            pred_obj = F.softmax(pred_obj.permute(0,2,3,1).reshape(-1, 11), dim=-1)
-            pred_state = F.softmax(pred_state.permute(0,2,3,1).reshape(-1, 3), dim=-1)
+            pred_col = pred_col.permute(0,2,3,1).reshape(-1, 6)
+            pred_obj = pred_obj.permute(0,2,3,1).reshape(-1, 11)
+            pred_state = pred_state.permute(0,2,3,1).reshape(-1, 3)
+
+            # [bs*7*7,1], [bs*7*7,1], [bs*7*7,1]
+            _, pred_col_idx = torch.max(F.softmax(pred_col, dim=-1), dim=-1)
+            pred_col_idx = pred_col_idx.unsqueeze(-1)
+            _, pred_obj_idx = torch.max(F.softmax(pred_obj, dim=-1), dim=-1)
+            pred_obj_idx = pred_obj_idx.unsqueeze(-1)
+            _, pred_state_idx = torch.max(F.softmax(pred_state, dim=-1), dim=-1)
+            pred_state_idx = pred_state_idx.unsqueeze(-1)
+
+            # [bs*7*7, 3]
+            pred_idx = torch.cat([pred_col_idx, pred_obj_idx, pred_state_idx], dim=-1)
+
+            # [bs, 7*7*3]
+            pred_idx = pred_idx.reshape(obs.image.shape[0], -1)
+
+            # [bs, 7*7*3]
+            img_for_acc = img.reshape(obs.image.shape[0], -1)
+
+            # reconstruction accuracy of a single partial observation
+            _correctness = pred_idx == img_for_acc
+            correctness = _correctness[:,0]
+            for i in range(1, _correctness.shape[1]):
+                correctness *= _correctness[:,i]
+            recon_acc = correctness.sum().item() / obs.image.shape[0]
 
             # reconstruction loss
             col_loss = nn.CrossEntropyLoss()(pred_col, img[:,0])
@@ -216,10 +243,28 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
 
             recon_loss = col_loss + obj_loss + state_loss
 
-            # reward loss
+            ## reward loss
             pred_reward = self.reward_decoder(embedding)
 
-            reward_loss = nn.MSELoss()(pred_reward, rewards.unsqueeze(-1))
+            # nonzero reward loss
+            nonzero_rewards = rewards[rewards!=0]
+            nonzero_pred_reward = pred_reward[rewards!=0, :]
+            nonzero_reward_num = len(nonzero_rewards)
+            if nonzero_reward_num == 0:
+                nonzero_reward_loss = torch.Tensor([0])
+            else:
+                nonzero_reward_loss = nn.MSELoss()(nonzero_pred_reward,
+                    nonzero_rewards.unsqueeze(-1))
+
+            # zero reward loss
+            zero_rewards = rewards[rewards==0]
+            zero_pred_reward = pred_reward[rewards==0, :]
+            zero_reward_num = len(zero_rewards)
+            if zero_reward_num == 0:
+                zero_reward_loss = torch.Tensor([0])
+            else:
+                zero_reward_loss = nn.MSELoss()(zero_pred_reward,
+                    zero_rewards.unsqueeze(-1))
 
             # KL
             kl_loss = kl_divergence(post_dist, prior_dist).mean()
@@ -227,8 +272,16 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
             # representation loss
             rep_loss = {}
             rep_loss['rep_loss'] = recon_loss + reward_loss + self.beta_rep_kl*kl_loss
+            rep_loss['recon_acc'] = recon_acc
             rep_loss['recon_loss'] = recon_loss
+            rep_loss['recon_col_loss'] = col_loss
+            rep_loss['recon_obj_loss'] = obj_loss
+            rep_loss['recon_state_loss'] = state_loss
             rep_loss['reward_loss'] = reward_loss
+            rep_loss['nonzero_reward_loss'] = nonzero_reward_loss.item()
+            rep_loss['nonzero_reward_num'] = nonzero_reward_num
+            rep_loss['zero_reward_loss'] = zero_reward_loss.item()
+            rep_loss['zero_reward_num'] = zero_reward_num
             rep_loss['kl_loss'] = kl_loss
 
         else:
@@ -237,13 +290,19 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
         if get_img_loss:
 
             # get actions
-            img_x = self.actor(prior.detach())
+            if ('rep' in self.loss_type) and (not self.combine_loss):
+                img_x = self.actor(prior.detach())
+            else:
+                img_x = self.actor(prior)
             img_dists = [Categorical(logits=F.log_softmax(img_x, dim=1))]
             img_actions = [img_dists[-1].sample()]
             img_logprobs = [img_dists[-1].log_prob(img_actions[-1])]
 
             # get values
-            img_x = self.critic(prior.detach())
+            if ('rep' in self.loss_type) and (not self.combine_loss):
+                img_x = self.critic(prior.detach())
+            else:
+                img_x = self.critic(prior)
             img_values = [img_x.squeeze(1)]
 
             # get rewards
@@ -269,12 +328,18 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
                 prior_dist = Normal(prior_mean, prior_std)
                 prior = prior_dist.rsample()
                 # get actions
-                img_x = self.actor(prior.detach())
+                if ('rep' in self.loss_type) and (not self.combine_loss):
+                    img_x = self.actor(prior.detach())
+                else:
+                    img_x = self.actor(prior)
                 img_dists.append(Categorical(logits=F.log_softmax(img_x, dim=1)))
                 img_actions.append(img_dists[-1].sample())
                 img_logprobs.append(img_dists[-1].log_prob(img_actions[-1]))
                 # get values
-                img_x = self.critic(prior.detach())
+                if ('rep' in self.loss_type) and (not self.combine_loss):
+                    img_x = self.critic(prior.detach())
+                else:
+                    img_x = self.critic(prior)
                 img_values.append(img_x.squeeze(1))
                 # get rewards
                 img_rewards.append(self.reward_decoder(prior).squeeze(1).detach())
@@ -316,6 +381,9 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
         if self.use_text:
             embed_text = self._get_embed_text(obs.text)
             embedding = torch.cat((embedding, embed_text), dim=1)
+
+        if ('rep' in self.loss_type) and (not self.combine_loss):
+            embedding = embedding.detach()
 
         x = self.actor(embedding)
         dist = Categorical(logits=F.log_softmax(x, dim=1))

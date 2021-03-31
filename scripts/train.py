@@ -76,37 +76,51 @@ parser.add_argument("--mem_len", type=int, default=20, help="memory length")
 ## Parameters for dreamer
 parser.add_argument("--beta_rep_kl", type=float, default=0.1, help="beta for KL term")
 parser.add_argument("--n_imagine", type=int, default=5, help="the number of imaginary step")
-parser.add_argument("--loss_type", type=str, default='all',
-                    help="loss type: all | rep-agent | rep-img")
+parser.add_argument("--loss_type", type=str, default='agent-rep-img',
+                    help="combination of agent, rep and img")
+parser.add_argument("--combine_loss", type=int, default=0, help="whether train rep NN with agent loss or not")
+parser.add_argument("--lr_rep", type=float, default=0.001, help="learning rate for representation")
+parser.add_argument("--lr_img", type=float, default=8e-5, help="learning rate for imagination")
+parser.add_argument("--clip_dreamer", type=float, default=100, help="clip value for dreamer updates (rep and img)")
 
 args = parser.parse_args()
 
-if 'trxl' in args.mem_type:
-    args.mem = True
-else:
-    args.mem = args.recurrence > 1
+args.mem = True
+#if 'trxl' in args.mem_type:
+#    args.mem = True
+#else:
+#    args.mem = args.recurrence > 1
 
 # dreamer requires memory
 
 if args.mem_type=='lstm' and args.recurrence==1:
     raise ValueError("Dreamer requires memory module.")
 
+if args.combine_loss == 1:
+    args.combine_loss = True
+else:
+    args.combine_loss = False
+
 # Set run dir
 
 date = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
 if args.mem:
     if args.mem_type == 'lstm':
-        default_model_name = f"{args.env}_Dreamer_{args.algo}_{args.loss_type}_{args.mem_type}_"
-        default_model_name += f"Rec{args.recurrence}_Lr{args.lr}_FPP{args.frames_per_proc}_seed{args.seed}_{date}"
+        default_model_name = f"{args.env}_Dreamer_{args.algo}_{args.loss_type}_Comb{args.combine_loss}_{args.mem_type}_"
+        default_model_name += f"Rec{args.recurrence}_Lr{args.lr}_LrRep{args.lr_rep}_LrImg{args.lr_img}_"
+        default_model_name += f"FPP{args.frames_per_proc}_seed{args.seed}_{date}"
     else:
-        default_model_name = f"{args.env}_Dreamer_{args.algo}_{args.loss_type}_{args.mem_type}_"
+        default_model_name = f"{args.env}_Dreamer_{args.algo}_{args.loss_type}_Comb{args.combine_loss}_{args.mem_type}_"
         default_model_name += f"Nlayer{args.n_layer}_MemLen{args.mem_len}_"
-        default_model_name += f"Lr{args.lr}_FPP{args.frames_per_proc}_seed{args.seed}_{date}"
+        default_model_name += f"Lr{args.lr}_LrRep{args.lr_rep}_LrImg{args.lr_img}_FPP{args.frames_per_proc}_seed{args.seed}_{date}"
 else:
     raise ValueError("Dreamer requires memory module.")
     #default_model_name = f"{args.env}_{args.algo}_seed{args.seed}_{date}"
 
-model_name = args.model or default_model_name
+if args.model == 'None' or args.model is None:
+    model_name = default_model_name
+else:
+    model_name = args.model
 model_dir = utils.get_model_dir(model_name)
 
 # Load loggers and Tensorboard writer
@@ -155,7 +169,7 @@ txt_logger.info("Observations preprocessor loaded")
 
 acmodel = ACModel(obs_space, envs[0].action_space, args.mem, args.text,
                   args.mem_type, args.n_layer, args.n_head, args.dropout, args.mem_len,
-                  args.beta_rep_kl, args.n_imagine)
+                  args.beta_rep_kl, args.n_imagine, args.loss_type, args.combine_loss)
 if "model_state" in status:
     acmodel.load_state_dict(status["model_state"])
 acmodel.to(device)
@@ -173,7 +187,8 @@ elif args.algo == "ppo":
     algo = torch_ac.PPOAlgo(envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
                             args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
                             args.optim_eps, args.clip_eps, args.epochs, args.batch_size, preprocess_obss,
-                            mem_type=args.mem_type, mem_len=args.mem_len, n_layer=args.n_layer, loss_type=args.loss_type)
+                            mem_type=args.mem_type, mem_len=args.mem_len, n_layer=args.n_layer, loss_type=args.loss_type, combine_loss=args.combine_loss, lr_rep=args.lr_rep,
+                            lr_img=args.lr_img, clip_dreamer=args.clip_dreamer)
 else:
     raise ValueError("Incorrect algorithm name: {}".format(args.algo))
 
@@ -217,8 +232,15 @@ while num_frames < args.frames:
         header += ["entropy", "value", "policy_loss", "value_loss", "grad_norm"]
         data += [logs["entropy"], logs["value"], logs["policy_loss"], logs["value_loss"], logs["grad_norm"]]
 
-        header += ["rep_loss_total", "rep_loss_recon", "rep_loss_reward", "rep_loss_kl"]
-        data += [logs["rep_loss"], logs["recon_loss"], logs["reward_loss"], logs["kl_loss"]]
+        header += ["rep_loss_total", "rep_loss_recon_acc", "rep_loss_recon", "rep_loss_recon_col", "rep_loss_recon_obj",
+            "rep_loss_recon_state", "rep_loss_reward", "rep_loss_reward_nonzero",
+            "rep_loss_reward_zero", "rep_loss_reward_nonzero_num", "rep_loss_reward_zero_num",
+            "rep_loss_kl"]
+        data += [logs["rep_loss"], logs["recon_acc"], logs["recon_loss"], logs["recon_col_loss"],
+            logs["recon_obj_loss"], logs["recon_state_loss"], logs["reward_loss"],
+            logs["nonzero_reward_loss"], logs["zero_reward_loss"],
+            logs["nonzero_reward_num"], logs["zero_reward_num"],
+            logs["kl_loss"]]
 
         header += ["img_loss_total", "img_loss_policy", "img_loss_value"]
         data += [logs["img_loss"], logs["img_policy_loss"], logs["img_value_loss"]]
@@ -242,7 +264,9 @@ while num_frames < args.frames:
 
     if args.save_interval > 0 and update % args.save_interval == 0:
         status = {"num_frames": num_frames, "update": update,
-                  "model_state": acmodel.state_dict(), "optimizer_state": algo.optimizer.state_dict()}
+                  "model_state": acmodel.state_dict(), "ppo_optimizer_state": algo.agent_optimizer.state_dict(),
+                  "rep_optimizer_state": algo.rep_optimizer.state_dict(),
+                  "img_optimizer_state": algo.img_optimizer.state_dict()}
         if hasattr(preprocess_obss, "vocab"):
             status["vocab"] = preprocess_obss.vocab.vocab
         utils.save_status(status, model_dir)
