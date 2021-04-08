@@ -4,6 +4,7 @@ import datetime
 import torch
 import torch_ac
 import tensorboardX
+import numpy
 import sys
 
 import utils
@@ -81,7 +82,19 @@ parser.add_argument("--loss_type", type=str, default='agent-rep-img',
 parser.add_argument("--combine_loss", type=int, default=0, help="whether train rep NN with agent loss or not")
 parser.add_argument("--lr_rep", type=float, default=0.001, help="learning rate for representation")
 parser.add_argument("--lr_img", type=float, default=8e-5, help="learning rate for imagination")
+parser.add_argument("--img_method", type=str, default='ppo', help="imagination method")
 parser.add_argument("--clip_dreamer", type=float, default=100, help="clip value for dreamer updates (rep and img)")
+
+## Visualize
+parser.add_argument("--visualize", type=int, default=0, help="visualization or not")
+parser.add_argument("--episodes", type=int, default=10,
+                    help="number of episodes to visualize")
+parser.add_argument("--gif", type=str, default=None,
+                    help="store output as gif with the given filename")
+parser.add_argument("--argmax", action="store_true", default=False,
+                    help="select the action with highest probability (default: False)")
+parser.add_argument("--pause", type=float, default=0.1,
+                    help="pause duration between two consequent actions of the agent (default: 0.1)")
 
 args = parser.parse_args()
 
@@ -107,12 +120,13 @@ date = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
 if args.mem:
     if args.mem_type == 'lstm':
         default_model_name = f"{args.env}_Dreamer_{args.algo}_{args.loss_type}_Comb{args.combine_loss}_{args.mem_type}_"
-        default_model_name += f"Rec{args.recurrence}_Lr{args.lr}_LrRep{args.lr_rep}_LrImg{args.lr_img}_"
+        default_model_name += f"Rec{args.recurrence}_Lr{args.lr}_LrRep{args.lr_rep}_LrImg{args.lr_img}_Nimg{args.n_imagine}_Img{args.img_method}_"
         default_model_name += f"FPP{args.frames_per_proc}_seed{args.seed}_{date}"
     else:
         default_model_name = f"{args.env}_Dreamer_{args.algo}_{args.loss_type}_Comb{args.combine_loss}_{args.mem_type}_"
         default_model_name += f"Nlayer{args.n_layer}_MemLen{args.mem_len}_"
-        default_model_name += f"Lr{args.lr}_LrRep{args.lr_rep}_LrImg{args.lr_img}_FPP{args.frames_per_proc}_seed{args.seed}_{date}"
+        default_model_name += f"Lr{args.lr}_LrRep{args.lr_rep}_LrImg{args.lr_img}_Nimg{args.n_imagine}_Img{args.img_method}_"
+        default_model_name += f"FPP{args.frames_per_proc}_seed{args.seed}_{date}"
 else:
     raise ValueError("Dreamer requires memory module.")
     #default_model_name = f"{args.env}_{args.algo}_seed{args.seed}_{date}"
@@ -176,6 +190,60 @@ acmodel.to(device)
 txt_logger.info("Model loaded\n")
 txt_logger.info("{}\n".format(acmodel))
 
+# Visualize
+
+if args.visualize:
+    agent = utils.Agent(preprocess_obss, acmodel, args.mem_type, model_dir=model_dir,
+                        argmax=args.argmax, device=device)
+
+    if args.gif:
+       from array2gif import write_gif
+       frames = []
+
+    # Create a window to view the environment
+    #envs[0].render()
+    print('Visualization start')
+
+    for episode in range(args.episodes):
+        print("Episode: ",episode, args.episodes)
+        obs = envs[0].reset()
+
+        while True:
+            #envs[0].render()
+            #if args.gif:
+            #    frames.append(numpy.moveaxis(envs[0].render("rgb_array"), 2, 0))
+
+            action, est_reward = agent.get_action(obs)
+
+            if args.gif:
+                img = envs[0].render("rgb_array")
+                H, W, C = img.shape
+                if 'GoodObject' in args.env:
+                    est_reward = (numpy.clip(est_reward,-1,1)+1)/2
+                else:
+                    est_reward = numpy.clip(est_reward,0,1)
+                color_bar = numpy.ones((H,10,C), dtype=int) * int(est_reward*255)
+                img = numpy.concatenate((img, color_bar), axis=1)
+                frames.append(numpy.moveaxis(img, 2, 0))
+                #frames.append(numpy.moveaxis(envs[0].render("rgb_array"), 2, 0))
+
+            obs, reward, done, _ = envs[0].step(action)
+            agent.analyze_feedback(reward, done)
+
+            #if done or envs[0].window.closed:
+            if done:
+                break
+
+        #if envs[0].window.closed:
+        #    break
+
+    if args.gif:
+        print("Saving gif... ", end="")
+        write_gif(numpy.array(frames), "gifs/"+args.gif+".gif", fps=1/args.pause)
+        print("Done.")
+    print("Visualization done.")
+    exit(1)
+
 # Load algo
 
 if args.algo == "a2c":
@@ -188,7 +256,8 @@ elif args.algo == "ppo":
                             args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
                             args.optim_eps, args.clip_eps, args.epochs, args.batch_size, preprocess_obss,
                             mem_type=args.mem_type, mem_len=args.mem_len, n_layer=args.n_layer, loss_type=args.loss_type, combine_loss=args.combine_loss, lr_rep=args.lr_rep,
-                            lr_img=args.lr_img, clip_dreamer=args.clip_dreamer)
+                            lr_img=args.lr_img, clip_dreamer=args.clip_dreamer,
+                            n_imagine=args.n_imagine, img_method=args.img_method)
 else:
     raise ValueError("Incorrect algorithm name: {}".format(args.algo))
 
@@ -241,9 +310,6 @@ while num_frames < args.frames:
             logs["nonzero_reward_loss"], logs["zero_reward_loss"],
             logs["nonzero_reward_num"], logs["zero_reward_num"],
             logs["kl_loss"]]
-
-        header += ["img_loss_total", "img_loss_policy", "img_loss_value"]
-        data += [logs["img_loss"], logs["img_policy_loss"], logs["img_value_loss"]]
 
         txt_logger.info(
             "U {} | F {:06} | FPS {:04.0f} | D {} | rR:μσmM {:.2f} {:.2f} {:.2f} {:.2f} | F:μσmM {:.1f} {:.1f} {} {} | H {:.3f} | V {:.3f} | pL {:.3f} | vL {:.3f} | ∇ {:.3f}"
