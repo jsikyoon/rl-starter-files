@@ -82,8 +82,9 @@ parser.add_argument("--loss_type", type=str, default='agent-rep-img',
 parser.add_argument("--combine_loss", type=int, default=0, help="whether train rep NN with agent loss or not")
 parser.add_argument("--lr_rep", type=float, default=0.001, help="learning rate for representation")
 parser.add_argument("--lr_img", type=float, default=8e-5, help="learning rate for imagination")
-parser.add_argument("--img_method", type=str, default='ppo', help="imagination method")
-parser.add_argument("--clip_dreamer", type=float, default=100, help="clip value for dreamer updates (rep and img)")
+parser.add_argument("--use_real", type=int, default=1, help="use real trajectories at the first imagination")
+parser.add_argument("--img_epochs", type=int, default=5, help="iteration to train the policies")
+parser.add_argument("--rep_epochs", type=int, default=50, help="iteration to train the representation layers")
 
 ## Visualize
 parser.add_argument("--visualize", type=int, default=0, help="visualization or not")
@@ -98,38 +99,42 @@ parser.add_argument("--pause", type=float, default=0.1,
 
 args = parser.parse_args()
 
-args.mem = True
-#if 'trxl' in args.mem_type:
-#    args.mem = True
-#else:
-#    args.mem = args.recurrence > 1
-
-# dreamer requires memory
-
-if args.mem_type=='lstm' and args.recurrence==1:
-    raise ValueError("Dreamer requires memory module.")
+if 'trxl' in args.mem_type:
+    args.mem = True
+else:
+    args.mem = args.recurrence > 1
 
 if args.combine_loss == 1:
     args.combine_loss = True
 else:
     args.combine_loss = False
 
+if args.use_real == 1:
+    args.use_real = True
+else:
+    args.use_real = False
+
 # Set run dir
 
 date = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
 if args.mem:
+    default_model_name = f"{args.env}_{args.algo}_{args.loss_type}_Comb{args.combine_loss}_{args.mem_type}_"
+
     if args.mem_type == 'lstm':
-        default_model_name = f"{args.env}_Dreamer_{args.algo}_{args.loss_type}_Comb{args.combine_loss}_{args.mem_type}_"
-        default_model_name += f"Rec{args.recurrence}_Lr{args.lr}_LrRep{args.lr_rep}_LrImg{args.lr_img}_Nimg{args.n_imagine}_Img{args.img_method}_"
-        default_model_name += f"FPP{args.frames_per_proc}_seed{args.seed}_{date}"
+        default_model_name += f"Rec{args.recurrence}_"
     else:
-        default_model_name = f"{args.env}_Dreamer_{args.algo}_{args.loss_type}_Comb{args.combine_loss}_{args.mem_type}_"
         default_model_name += f"Nlayer{args.n_layer}_MemLen{args.mem_len}_"
-        default_model_name += f"Lr{args.lr}_LrRep{args.lr_rep}_LrImg{args.lr_img}_Nimg{args.n_imagine}_Img{args.img_method}_"
-        default_model_name += f"FPP{args.frames_per_proc}_seed{args.seed}_{date}"
+
+    if args.algo == 'dreamer':
+        default_model_name += f"LrRep{args.lr_rep}_LrImg{args.lr_img}_Nimg{args.n_imagine}_UseReal{args.use_real}_"
+        default_model_name += f"ImgEpochs{args.img_epochs}_RepEpochs{args.rep_epochs}_"
+    else:
+        default_model_name += f"Lr{args.lr}_RepEpochs{args.rep_epochs}_"
+
+    default_model_name += f"FPP{args.frames_per_proc}_seed{args.seed}_{date}"
+
 else:
-    raise ValueError("Dreamer requires memory module.")
-    #default_model_name = f"{args.env}_{args.algo}_seed{args.seed}_{date}"
+    default_model_name = f"{args.env}_{args.algo}_seed{args.seed}_{date}"
 
 if args.model == 'None' or args.model is None:
     model_name = default_model_name
@@ -247,6 +252,7 @@ if args.visualize:
 # Load algo
 
 if args.algo == "a2c":
+    raise NotImplementedError("Not implemented correctly yet")
     algo = torch_ac.A2CAlgo(envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
                             args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
                             args.optim_alpha, args.optim_eps, preprocess_obss,
@@ -255,9 +261,16 @@ elif args.algo == "ppo":
     algo = torch_ac.PPOAlgo(envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
                             args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
                             args.optim_eps, args.clip_eps, args.epochs, args.batch_size, preprocess_obss,
-                            mem_type=args.mem_type, mem_len=args.mem_len, n_layer=args.n_layer, loss_type=args.loss_type, combine_loss=args.combine_loss, lr_rep=args.lr_rep,
-                            lr_img=args.lr_img, clip_dreamer=args.clip_dreamer,
-                            n_imagine=args.n_imagine, img_method=args.img_method)
+                            mem_type=args.mem_type, mem_len=args.mem_len, n_layer=args.n_layer, loss_type=args.loss_type,
+                            combine_loss=args.combine_loss, lr_rep=args.lr_rep, rep_epochs=args.rep_epochs)
+elif args.algo == "dreamer":
+    algo = torch_ac.DREAMERAlgo(envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
+                                args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
+                                args.optim_eps, args.clip_eps, args.batch_size, preprocess_obss,
+                                mem_type=args.mem_type, mem_len=args.mem_len, n_layer=args.n_layer,
+                                loss_type=args.loss_type, combine_loss=args.combine_loss,
+                                lr_rep=args.lr_rep, lr_img=args.lr_img, n_imagine=args.n_imagine, use_real=args.use_real,
+                                img_epochs=args.img_epochs, rep_epochs=args.rep_epochs)
 else:
     raise ValueError("Incorrect algorithm name: {}".format(args.algo))
 
@@ -329,10 +342,14 @@ while num_frames < args.frames:
     # Save status
 
     if args.save_interval > 0 and update % args.save_interval == 0:
-        status = {"num_frames": num_frames, "update": update,
-                  "model_state": acmodel.state_dict(), "ppo_optimizer_state": algo.agent_optimizer.state_dict(),
-                  "rep_optimizer_state": algo.rep_optimizer.state_dict(),
-                  "img_optimizer_state": algo.img_optimizer.state_dict()}
+        if args.algo == 'dreamer':
+            status = {"num_frames": num_frames, "update": update,
+                      "model_state": acmodel.state_dict(),
+                      "rep_optimizer_state": algo.rep_optimizer.state_dict(),
+                      "img_optimizer_state": algo.img_optimizer.state_dict()}
+        else:
+            status = {"num_frames": num_frames, "update": update,
+                      "model_state": acmodel.state_dict(), "ppo_optimizer_state": algo.agent_optimizer.state_dict()}
         if hasattr(preprocess_obss, "vocab"):
             status["vocab"] = preprocess_obss.vocab.vocab
         utils.save_status(status, model_dir)

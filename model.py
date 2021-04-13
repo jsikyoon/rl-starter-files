@@ -256,27 +256,30 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
             pred_reward = self.reward_decoder(
                     torch.cat([embedding, actions.unsqueeze(-1)], dim=-1))
 
+            reward_loss = 0
             # nonzero reward loss
             nonzero_rewards = rewards[rewards!=0]
             nonzero_pred_reward = pred_reward[rewards!=0, :]
             nonzero_reward_num = len(nonzero_rewards)
             if nonzero_reward_num == 0:
-                nonzero_reward_loss = torch.Tensor([0])
+                nonzero_reward_loss = torch.Tensor([0]).to(rewards.device)
             else:
                 nonzero_reward_loss = nn.MSELoss()(nonzero_pred_reward,
                     nonzero_rewards.unsqueeze(-1))
+                reward_loss += 0.01*nonzero_reward_loss
 
             # zero reward loss
             zero_rewards = rewards[rewards==0]
             zero_pred_reward = pred_reward[rewards==0, :]
             zero_reward_num = len(zero_rewards)
             if zero_reward_num == 0:
-                zero_reward_loss = torch.Tensor([0])
+                zero_reward_loss = torch.Tensor([0]).to(rewards.device)
             else:
                 zero_reward_loss = nn.MSELoss()(zero_pred_reward,
                     zero_rewards.unsqueeze(-1))
+                reward_loss += zero_reward_loss
 
-            reward_loss = nn.MSELoss()(pred_reward, rewards.unsqueeze(-1))
+            #reward_loss = nn.MSELoss()(pred_reward, rewards.unsqueeze(-1))
 
             # KL
             kl_loss = kl_divergence(post_dist, prior_dist).mean()
