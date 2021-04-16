@@ -59,7 +59,7 @@ class Agent:
         self.prev_state = state
 
         # reward estimation
-        est_rewards = self.acmodel.reward_decoder(state)
+        est_rewards = self.acmodel.reward_decoder(torch.cat([state, actions.unsqueeze(-1)], dim=-1))
 
         return actions.cpu().numpy(), est_rewards.detach().cpu().numpy()[0]
 

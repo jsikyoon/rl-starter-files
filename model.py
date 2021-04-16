@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions.categorical import Categorical
 import torch_ac
-from torch.distributions import Normal, kl_divergence
+from torch.distributions import Normal, kl_divergence, Bernoulli
 
 from mem_transformer import MemTransformer
 
@@ -256,46 +256,58 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
             pred_reward = self.reward_decoder(
                     torch.cat([embedding, actions.unsqueeze(-1)], dim=-1))
 
-            reward_loss = 0
             # nonzero reward loss
             nonzero_rewards = rewards[rewards!=0]
             nonzero_pred_reward = pred_reward[rewards!=0, :]
             nonzero_reward_num = len(nonzero_rewards)
             if nonzero_reward_num == 0:
-                nonzero_reward_loss = torch.Tensor([0]).to(rewards.device)
+                nonzero_reward_mse = torch.Tensor([0]).to(rewards.device)
+                nonzero_reward_logprob = torch.Tensor([0]).to(rewards.device)
             else:
-                nonzero_reward_loss = nn.MSELoss()(nonzero_pred_reward,
+                nonzero_reward_mse = nn.MSELoss(reduction='sum')(nonzero_pred_reward,
                     nonzero_rewards.unsqueeze(-1))
-                reward_loss += 0.01*nonzero_reward_loss
+                nonzero_reward_dist = Normal(nonzero_pred_reward, 1.0)
+                #nonzero_reward_dist = Bernoulli(logits=nonzero_pred_reward)
+                nonzero_reward_logprob = -1*nonzero_reward_dist.log_prob(nonzero_rewards.unsqueeze(-1)).sum()
+
 
             # zero reward loss
             zero_rewards = rewards[rewards==0]
             zero_pred_reward = pred_reward[rewards==0, :]
             zero_reward_num = len(zero_rewards)
             if zero_reward_num == 0:
-                zero_reward_loss = torch.Tensor([0]).to(rewards.device)
+                zero_reward_mse = torch.Tensor([0]).to(rewards.device)
+                zero_reward_logprob = torch.Tensor([0]).to(rewards.device)
             else:
-                zero_reward_loss = nn.MSELoss()(zero_pred_reward,
+                zero_reward_mse = nn.MSELoss(reduction='sum')(zero_pred_reward,
                     zero_rewards.unsqueeze(-1))
-                reward_loss += zero_reward_loss
+                zero_reward_dist = Normal(zero_pred_reward, 1.0)
+                #zero_reward_dist = Bernoulli(logits=zero_pred_reward)
+                zero_reward_logprob = -1*zero_reward_dist.log_prob(zero_rewards.unsqueeze(-1)).sum()
 
-            #reward_loss = nn.MSELoss()(pred_reward, rewards.unsqueeze(-1))
+            reward_mse = nn.MSELoss()(pred_reward, rewards.unsqueeze(-1))
+            reward_dist = Normal(pred_reward, 1.0)
+            #reward_dist = Bernoulli(logits=pred_reward)
+            reward_logprob = -1*reward_dist.log_prob(rewards.unsqueeze(-1)).mean()
 
             # KL
             kl_loss = kl_divergence(post_dist, prior_dist).mean()
 
             # representation loss
             rep_loss = {}
-            rep_loss['rep_loss'] = recon_loss + reward_loss + self.beta_rep_kl*kl_loss
+            rep_loss['rep_loss'] = recon_loss + reward_logprob + self.beta_rep_kl*kl_loss
             rep_loss['recon_acc'] = recon_acc
             rep_loss['recon_loss'] = recon_loss
             rep_loss['recon_col_loss'] = col_loss
             rep_loss['recon_obj_loss'] = obj_loss
             rep_loss['recon_state_loss'] = state_loss
-            rep_loss['reward_loss'] = reward_loss
-            rep_loss['nonzero_reward_loss'] = nonzero_reward_loss.item()
+            rep_loss['reward_mse'] = reward_mse
+            rep_loss['reward_logprob'] = reward_logprob
+            rep_loss['nonzero_reward_mse'] = nonzero_reward_mse.item()
+            rep_loss['nonzero_reward_logprob'] = nonzero_reward_logprob.item()
             rep_loss['nonzero_reward_num'] = nonzero_reward_num
-            rep_loss['zero_reward_loss'] = zero_reward_loss.item()
+            rep_loss['zero_reward_mse'] = zero_reward_mse.item()
+            rep_loss['zero_reward_logprob'] = zero_reward_logprob.item()
             rep_loss['zero_reward_num'] = zero_reward_num
             rep_loss['kl_loss'] = kl_loss
 

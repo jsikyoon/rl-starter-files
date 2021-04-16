@@ -59,7 +59,8 @@ parser.add_argument("--optim-alpha", type=float, default=0.99,
 parser.add_argument("--clip-eps", type=float, default=0.2,
                     help="clipping epsilon for PPO (default: 0.2)")
 parser.add_argument("--recurrence", type=int, default=1,
-                    help="number of time-steps gradient is backpropagated (default: 1). If > 1, a LSTM is added to the model to have memory.")
+                    help="number of time-steps gradient is backpropagated (default: 1). \
+                          If > 1, a LSTM is added to the model to have memory.")
 parser.add_argument("--text", action="store_true", default=False,
                     help="add a GRU to the model to handle text input")
 
@@ -274,9 +275,9 @@ elif args.algo == "dreamer":
 else:
     raise ValueError("Incorrect algorithm name: {}".format(args.algo))
 
-if "optimizer_state" in status:
-    algo.optimizer.load_state_dict(status["optimizer_state"])
-txt_logger.info("Optimizer loaded\n")
+#if "optimizer_state" in status:
+#    algo.optimizer.load_state_dict(status["optimizer_state"])
+#txt_logger.info("Optimizer loaded\n")
 
 # Train model
 
@@ -314,15 +315,23 @@ while num_frames < args.frames:
         header += ["entropy", "value", "policy_loss", "value_loss", "grad_norm"]
         data += [logs["entropy"], logs["value"], logs["policy_loss"], logs["value_loss"], logs["grad_norm"]]
 
-        header += ["rep_loss_total", "rep_loss_recon_acc", "rep_loss_recon", "rep_loss_recon_col", "rep_loss_recon_obj",
-            "rep_loss_recon_state", "rep_loss_reward", "rep_loss_reward_nonzero",
-            "rep_loss_reward_zero", "rep_loss_reward_nonzero_num", "rep_loss_reward_zero_num",
-            "rep_loss_kl"]
-        data += [logs["rep_loss"], logs["recon_acc"], logs["recon_loss"], logs["recon_col_loss"],
-            logs["recon_obj_loss"], logs["recon_state_loss"], logs["reward_loss"],
-            logs["nonzero_reward_loss"], logs["zero_reward_loss"],
-            logs["nonzero_reward_num"], logs["zero_reward_num"],
-            logs["kl_loss"]]
+        header += ["rep_loss_total",
+
+                   "rep_loss_recon_acc", "rep_loss_recon", "rep_loss_recon_col", "rep_loss_recon_obj", "rep_loss_recon_state",
+
+                   "rep_loss_reward_mse", "rep_loss_reward_logprob", "rep_loss_reward_nonzero_mse", "rep_loss_reward_nonzero_logprob",
+                   "rep_loss_reward_zero_mse", "rep_loss_reward_zero_logprob", "rep_loss_reward_nonzero_num", "rep_loss_reward_zero_num",
+
+                   "rep_loss_kl"]
+
+        data += [logs["rep_loss"],
+                
+                logs["recon_acc"], logs["recon_loss"], logs["recon_col_loss"], logs["recon_obj_loss"], logs["recon_state_loss"],
+                
+                logs["reward_mse"], logs["reward_logprob"], logs["nonzero_reward_mse"], logs["nonzero_reward_logprob"], logs["zero_reward_mse"],
+                logs["zero_reward_logprob"], logs["nonzero_reward_num"], logs["zero_reward_num"],
+                
+                logs["kl_loss"]]
 
         txt_logger.info(
             "U {} | F {:06} | FPS {:04.0f} | D {} | rR:μσmM {:.2f} {:.2f} {:.2f} {:.2f} | F:μσmM {:.1f} {:.1f} {} {} | H {:.3f} | V {:.3f} | pL {:.3f} | vL {:.3f} | ∇ {:.3f}"
@@ -349,7 +358,9 @@ while num_frames < args.frames:
                       "img_optimizer_state": algo.img_optimizer.state_dict()}
         else:
             status = {"num_frames": num_frames, "update": update,
-                      "model_state": acmodel.state_dict(), "ppo_optimizer_state": algo.agent_optimizer.state_dict()}
+                      "model_state": acmodel.state_dict(),
+                      "rep_optimizer_state": algo.rep_optimizer.state_dict(),
+                      "agent_optimizer_state": algo.agent_optimizer.state_dict()}
         if hasattr(preprocess_obss, "vocab"):
             status["vocab"] = preprocess_obss.vocab.vocab
         utils.save_status(status, model_dir)

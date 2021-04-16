@@ -10,14 +10,16 @@ img_name = 'minigrid:latest'
 
 ## gpu
 #gpu_ids = ['5','6','7','1','2','3','4']
-gpu_ids = ['6','7']
+#gpu_ids = ['1','2','3','4','5','6','7']
+gpu_ids = ['4','5','6','7','0']
+#gpu_ids = ['6','7','0']
 cnt = 0
 max_cnt = len(gpu_ids)
 
 
 ## algo
-#algo = 'dreamer'
-algo = 'ppo'
+algo = 'dreamer'
+#algo = 'ppo'
 #algo = 'a2c'
 
 
@@ -31,8 +33,8 @@ env = 'MiniGrid-MemoryS7-v0'
 
 
 ## mem
-#mem = 'trxl'
-mem = 'lstm'
+mem = 'trxl'
+#mem = 'lstm'
 if mem == 'trxl':
     mem_type = ['trxl', 'trxli', 'gtrxl-gru']
     recurrence = [1] # transformer
@@ -41,7 +43,7 @@ if mem == 'trxl':
 else:
     mem_type = ['lstm']
     #recurrence = [4, 8, 16, 32, 64] # lstm
-    recurrence = [4] # lstm
+    recurrence = [2] # lstm
     mem_len = -1  # Not used
     n_layer = -1
 
@@ -62,10 +64,11 @@ model = None
 lr = 0.001 # lstm
 #lr = 0.0001 # transformer
 lr_rep = 0.001
-lr_img = 0.001
+lr_img = 0.0
+#lr_img = 0.001
 
-combine_loss = [0,1]
-#combine_loss = [0]
+#combine_loss = [0,1]
+combine_loss = [0]
 
 n_imagines = [4]
 
@@ -80,12 +83,13 @@ else:
     raise ValueError
 
 if algo == 'dreamer':
-    use_real = [0, 1]
+    #use_real = [0, 1]
+    use_real = [0]
 else:
     use_real = [0] # not used
 
-img_epochs = 5
-rep_epochs = 50
+img_epochs = 1
+rep_epochs = 100
 
 visualize = 0
 episodes = 1
@@ -96,7 +100,6 @@ if visualize == 1:
     recurrence = [recurrence[0]]
     loss_type = [loss_type[0]]
     combine_loss = [combine_loss[0]]
-    img_method = [img_method[0]]
 
 ###############################################################################
 # Volumn options
