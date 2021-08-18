@@ -9,10 +9,14 @@ img_name = 'minigrid:latest'
 
 
 ## gpu
+#gpu_ids = ['0','1','2','3','4','5','6','7']
+#gpu_ids = ['3','4','5','6','7']
+#gpu_ids = ['6','7']
 #gpu_ids = ['5','6','7','1','2','3','4']
 #gpu_ids = ['1','2','3','4','5','6','7']
-gpu_ids = ['4','5','6','7','0']
-#gpu_ids = ['6','7','0']
+#gpu_ids = ['4','5','6','7','0']
+#gpu_ids = ['0','1','2']
+gpu_ids = ['4']
 cnt = 0
 max_cnt = len(gpu_ids)
 
@@ -33,8 +37,8 @@ env = 'MiniGrid-MemoryS7-v0'
 
 
 ## mem
-mem = 'trxl'
-#mem = 'lstm'
+#mem = 'trxl'
+mem = 'lstm'
 if mem == 'trxl':
     mem_type = ['trxl', 'trxli', 'gtrxl-gru']
     recurrence = [1] # transformer
@@ -43,7 +47,7 @@ if mem == 'trxl':
 else:
     mem_type = ['lstm']
     #recurrence = [4, 8, 16, 32, 64] # lstm
-    recurrence = [2] # lstm
+    recurrence = [32] # lstm
     mem_len = -1  # Not used
     n_layer = -1
 
@@ -58,8 +62,9 @@ else:
 
 ## etc
 save_interval = 10
-frames = 50000000
+frames = 100000000
 model = None
+model = 'MiniGrid-MemoryS7-v0_dreamer_rep-img_CombFalse_lstm_Rec32_LrRep0.001_LrImg0.0_Nimg4_UseRealFalse_ImgEpochs1_RepEpochs100_FPP128_seed1_21-04-17-09-40-48'
 
 lr = 0.001 # lstm
 #lr = 0.0001 # transformer

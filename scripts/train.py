@@ -294,13 +294,15 @@ while num_frames < args.frames:
     logs = {**logs1, **logs2}
     update_end_time = time.time()
 
-    num_frames += logs["num_frames"]
+    #num_frames += logs["num_frames"]
+    num_frames += logs["num_frames_for_selection"]
     update += 1
 
     # Print logs
 
     if update % args.log_interval == 0:
-        fps = logs["num_frames"]/(update_end_time - update_start_time)
+        #fps = logs["num_frames"]/(update_end_time - update_start_time)
+        fps = logs["num_frames_for_selection"]/(update_end_time - update_start_time)
         duration = int(time.time() - start_time)
         return_per_episode = utils.synthesize(logs["return_per_episode"])
         rreturn_per_episode = utils.synthesize(logs["reshaped_return_per_episode"])
