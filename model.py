@@ -18,27 +18,45 @@ def init_params(m):
 
 class ACModel(nn.Module, torch_ac.RecurrentACModel):
     def __init__(self, obs_space, action_space, use_memory=False, use_text=False,
-                 mem_type='lstm', n_layer=5, n_head=8, dropout=0.0, mem_len=20):
+                 mem_type='lstm', n_layer=5, n_head=8, dropout=0.0, mem_len=20,
+                 img_encode=False):
         super().__init__()
 
         # Decide which components are enabled
         self.use_text = use_text
         self.use_memory = use_memory
         self.mem_type = mem_type
+        self.img_encode = img_encode
 
         # Define image embedding
-        self.image_conv = nn.Sequential(
-            nn.Conv2d(3, 16, (2, 2)),
-            nn.ReLU(),
-            nn.MaxPool2d((2, 2)),
-            nn.Conv2d(16, 32, (2, 2)),
-            nn.ReLU(),
-            nn.Conv2d(32, 64, (2, 2)),
-            nn.ReLU()
-        )
-        n = obs_space["image"][0]
-        m = obs_space["image"][1]
-        self.image_embedding_size = ((n-1)//2-2)*((m-1)//2-2)*64
+        if img_encode:
+          depth = 32
+          act = nn.ELU
+          kernels = (4, 4, 4, 4)
+          layers = []
+          for i, kernel in enumerate(kernels):
+            if i == 0:
+              inp_dim = 3
+            else:
+              inp_dim = 2 ** (i-1) * depth
+            out_dim = 2 ** i * depth
+            layers.append(nn.Conv2d(inp_dim, out_dim, kernel, 2))
+            layers.append(act())
+          self.image_conv = nn.Sequential(*layers)
+          self.image_embedding_size = out_dim * 2 * 2
+        else:
+          self.image_conv = nn.Sequential(
+              nn.Conv2d(3, 16, (2, 2)),
+              nn.ReLU(),
+              nn.MaxPool2d((2, 2)),
+              nn.Conv2d(16, 32, (2, 2)),
+              nn.ReLU(),
+              nn.Conv2d(32, 64, (2, 2)),
+              nn.ReLU()
+          )
+          n = obs_space["image"][0]
+          m = obs_space["image"][1]
+          self.image_embedding_size = ((n-1)//2-2)*((m-1)//2-2)*64
 
         # Define memory
         if self.use_memory:
