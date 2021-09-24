@@ -169,6 +169,12 @@ elif args.algo == "ppo":
                             args.optim_eps, args.clip_eps, args.epochs, args.batch_size, preprocess_obss,
                             mem_type=args.mem_type, ext_len=args.ext_len, mem_len=args.mem_len, n_layer=args.n_layer,
                             img_encode=args.img_encode)
+elif args.algo == "vmpo":
+    algo = torch_ac.VMPOAlgo(envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
+                            args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
+                            args.optim_eps, args.clip_eps, args.epochs, args.batch_size, preprocess_obss,
+                            mem_type=args.mem_type, ext_len=args.ext_len, mem_len=args.mem_len, n_layer=args.n_layer,
+                            img_encode=args.img_encode)
 else:
     raise ValueError("Incorrect algorithm name: {}".format(args.algo))
 
