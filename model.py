@@ -18,7 +18,7 @@ def init_params(m):
 
 class ACModel(nn.Module, torch_ac.RecurrentACModel):
     def __init__(self, obs_space, action_space, use_memory=False, use_text=False,
-                 mem_type='lstm', n_layer=5, n_head=8, dropout=0.0, mem_len=20,
+                 mem_type='lstm', n_layer=5, n_head=8, ext_len=10, mem_len=10,
                  img_encode=False):
         super().__init__()
 
@@ -29,7 +29,7 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
         self.img_encode = img_encode
 
         # Define image embedding
-        if img_encode:
+        if img_encode: # from Dreamer image encoder
           depth = 32
           act = nn.ELU
           kernels = (4, 4, 4, 4)
@@ -45,6 +45,7 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
           self.image_conv = nn.Sequential(*layers)
           self.image_embedding_size = out_dim * 2 * 2
         else:
+          # 7x7 agentview
           self.image_conv = nn.Sequential(
               nn.Conv2d(3, 16, (2, 2)),
               nn.ReLU(),
@@ -57,6 +58,14 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
           n = obs_space["image"][0]
           m = obs_space["image"][1]
           self.image_embedding_size = ((n-1)//2-2)*((m-1)//2-2)*64
+          # 3x3 agentview
+          #self.image_conv = nn.Sequential(
+          #    nn.Conv2d(3, 16, (2, 2)),
+          #    nn.ReLU(),
+          #    nn.Conv2d(16, 32, (2, 2)),
+          #    nn.ReLU(),
+          #)
+          #self.image_embedding_size = 32
 
         # Define memory
         if self.use_memory:
@@ -64,35 +73,25 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
                 self.memory_module = nn.LSTMCell(self.image_embedding_size, self.semi_memory_size)
             elif 'trxl' in mem_type:
                 if mem_type=='trxl':
-                    self.memory_module = MemTransformer(
-                            self.image_embedding_size, n_layer=n_layer, n_head=n_head,
-                            d_model=self.semi_memory_size,
-                            d_head=self.semi_memory_size//n_head,
-                            d_inner=self.semi_memory_size,
-                            dropout=dropout, dropatt=dropout, pre_lnorm=False,
-                            tgt_len=1, ext_len=0, mem_len=mem_len, attn_type=0)
+                    pre_lnorm = False
+                    gate = 'plus'
                 elif mem_type=='trxli':
-                    self.memory_module = MemTransformer(
-                            self.image_embedding_size, n_layer=n_layer, n_head=n_head,
-                            d_model=self.semi_memory_size,
-                            d_head=self.semi_memory_size//n_head,
-                            d_inner=self.semi_memory_size,
-                            dropout=dropout, dropatt=dropout, pre_lnorm=True,
-                            tgt_len=1, ext_len=0, mem_len=mem_len, attn_type=0)
+                    pre_lnorm = True
+                    gate = 'plus'
                 elif 'gtrxl' in mem_type:
+                    pre_lnorm = True
                     gate = mem_type.split('-')[1]
-                    self.memory_module = MemTransformer(
-                            self.image_embedding_size, n_layer=n_layer, n_head=n_head,
-                            d_model=self.semi_memory_size,
-                            d_head=self.semi_memory_size//n_head,
-                            d_inner=self.semi_memory_size,
-                            dropout=dropout, dropatt=dropout, pre_lnorm=True,
-                            tgt_len=1, ext_len=0, mem_len=mem_len, attn_type=0,
-                            gate=gate)
                 else:
                     raise ValueError("The TrXL must be one of trxl, trxli and gtrxls")
+                self.memory_module = MemTransformer(
+                        self.image_embedding_size, n_layer=n_layer, n_head=n_head,
+                        d_model=self.semi_memory_size,
+                        d_head=self.semi_memory_size//n_head,
+                        d_inner=self.semi_memory_size*2,
+                        pre_lnorm=pre_lnorm,
+                        tgt_len=1, ext_len=ext_len, mem_len=mem_len, gate=gate)
             else:
-                raise ValueError("The TrXL must be lstm or trxls")
+                raise ValueError("The Memory must be lstm or trxls")
 
         # Define text embedding
         if self.use_text:
@@ -131,7 +130,7 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
     def semi_memory_size(self):
         return self.image_embedding_size
 
-    def forward(self, obs, memory):
+    def forward(self, obs, memory, ext=None):
         x = obs.image.transpose(1, 3).transpose(2, 3)
         x = self.image_conv(x)
         x = x.reshape(x.shape[0], -1)
@@ -143,8 +142,11 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
                 embedding = hidden[0]
                 memory = torch.cat(hidden, dim=1)
             else:  # transformers
-                embedding, memory = self.memory_module(x.unsqueeze(0), *memory)
+                x = torch.cat([ext, x.unsqueeze(0)],  dim=0)
+                embedding, memory = self.memory_module(x, *memory)
                 embedding = embedding[0]
+                memory = torch.stack(memory,dim=0).permute(2,0,1,3)
+                ext = x[1:].permute(1,0,2)
         else:
             embedding = x
 
@@ -152,13 +154,13 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
             embed_text = self._get_embed_text(obs.text)
             embedding = torch.cat((embedding, embed_text), dim=1)
 
-        x = self.actor(embedding)
-        dist = Categorical(logits=F.log_softmax(x, dim=1))
+        actor_output = self.actor(embedding)
+        dist = Categorical(logits=F.log_softmax(actor_output, dim=1))
 
-        x = self.critic(embedding)
-        value = x.squeeze(1)
+        critic_output = self.critic(embedding)
+        value = critic_output.squeeze(1)
 
-        return dist, value, memory
+        return dist, value, memory, ext
 
     def _get_embed_text(self, text):
         _, hidden = self.text_rnn(self.word_embedding(text))

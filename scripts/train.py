@@ -69,7 +69,7 @@ parser.add_argument("--mem_type", type=str, default='lstm',
                     gtrxl-sigmoidtanh | gtrxl-gru")
 parser.add_argument("--n_layer", type=int, default=5, help="TrXL layer num")
 parser.add_argument("--n_head", type=int, default=8, help="TrXL head num")
-parser.add_argument("--dropout", type=float, default=0.0, help="dropout rate")
+parser.add_argument("--ext_len", type=int, default=20, help="the length of given input that is not target")
 parser.add_argument("--mem_len", type=int, default=20, help="memory length")
 
 ## Parameters for image encoder
@@ -94,7 +94,7 @@ if args.mem:
         default_model_name += f"Rec{args.recurrence}_Lr{args.lr}_seed{args.seed}_{date}"
     else:
         default_model_name = f"{args.env}_{args.algo}_{args.mem_type}_ImgEncode{args.img_encode}_"
-        default_model_name += f"Nlayer{args.n_layer}_MemLen{args.mem_len}_"
+        default_model_name += f"Rec{args.recurrence}_Nlayer{args.n_layer}_ExtLen{args.ext_len}_MemLen{args.mem_len}_"
         default_model_name += f"Lr{args.lr}_seed{args.seed}_{date}"
 else:
     default_model_name = f"{args.env}_{args.algo}_seed{args.seed}_{date}"
@@ -147,7 +147,7 @@ txt_logger.info("Observations preprocessor loaded")
 # Load model
 
 acmodel = ACModel(obs_space, envs[0].action_space, args.mem, args.text,
-                  args.mem_type, args.n_layer, args.n_head, args.dropout, args.mem_len,
+                  args.mem_type, args.n_layer, args.n_head, args.ext_len, args.mem_len,
                   args.img_encode)
 if "model_state" in status:
     acmodel.load_state_dict(status["model_state"])
@@ -161,13 +161,13 @@ if args.algo == "a2c":
     algo = torch_ac.A2CAlgo(envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
                             args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
                             args.optim_alpha, args.optim_eps, preprocess_obss,
-                            mem_type=args.mem_type, mem_len=args.mem_len, n_layer=args.n_layer,
+                            mem_type=args.mem_type, ext_len=args.ext_len, mem_len=args.mem_len, n_layer=args.n_layer,
                             img_encode=args.img_encode)
 elif args.algo == "ppo":
     algo = torch_ac.PPOAlgo(envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
                             args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
                             args.optim_eps, args.clip_eps, args.epochs, args.batch_size, preprocess_obss,
-                            mem_type=args.mem_type, mem_len=args.mem_len, n_layer=args.n_layer,
+                            mem_type=args.mem_type, ext_len=args.ext_len, mem_len=args.mem_len, n_layer=args.n_layer,
                             img_encode=args.img_encode)
 else:
     raise ValueError("Incorrect algorithm name: {}".format(args.algo))

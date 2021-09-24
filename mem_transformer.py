@@ -383,10 +383,10 @@ class RelPartialLearnableMultiHeadAttn(RelMultiHeadAttn):
         if attn_mask is not None and attn_mask.any().item():
             if attn_mask.dim() == 2:
                 attn_score = attn_score.float().masked_fill(
-                    attn_mask[None,:,:,None], -float('inf')).type_as(attn_score)
+                    attn_mask[None,:,:,None].bool(), -float('inf')).type_as(attn_score)
             elif attn_mask.dim() == 3:
                 attn_score = attn_score.float().masked_fill(
-                    attn_mask[:,:,:,None], -float('inf')).type_as(attn_score)
+                    attn_mask[:,:,:,None].bool(), -float('inf')).type_as(attn_score)
 
 
         # [qlen x klen x bsz x n_head]
@@ -620,7 +620,7 @@ class AdaptiveEmbedding(nn.Module):
 
 class MemTransformer(nn.Module):
     def __init__(self, d_inp, n_layer, n_head, d_model, d_head, d_inner,
-                 dropout, dropatt, pre_lnorm=False,
+                 dropout=0.0, dropatt=0.0, pre_lnorm=False,
                  tgt_len=None, ext_len=None, mem_len=None,
                  same_length=False, attn_type=0, clamp_len=-1, gate='plus'):
         super(MemTransformer, self).__init__()
