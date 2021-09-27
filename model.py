@@ -46,26 +46,30 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
           self.image_embedding_size = out_dim * 2 * 2
         else:
           # 7x7 agentview
-          self.image_conv = nn.Sequential(
-              nn.Conv2d(3, 16, (2, 2)),
-              nn.ReLU(),
-              nn.MaxPool2d((2, 2)),
-              nn.Conv2d(16, 32, (2, 2)),
-              nn.ReLU(),
-              nn.Conv2d(32, 64, (2, 2)),
-              nn.ReLU()
-          )
-          n = obs_space["image"][0]
-          m = obs_space["image"][1]
-          self.image_embedding_size = ((n-1)//2-2)*((m-1)//2-2)*64
+          if obs_space['image'][0] == 7:
+              self.image_conv = nn.Sequential(
+                  nn.Conv2d(3, 16, (2, 2)),
+                  nn.ReLU(),
+                  nn.MaxPool2d((2, 2)),
+                  nn.Conv2d(16, 32, (2, 2)),
+                  nn.ReLU(),
+                  nn.Conv2d(32, 64, (2, 2)),
+                  nn.ReLU()
+              )
+              n = obs_space["image"][0]
+              m = obs_space["image"][1]
+              self.image_embedding_size = ((n-1)//2-2)*((m-1)//2-2)*64
           # 3x3 agentview
-          #self.image_conv = nn.Sequential(
-          #    nn.Conv2d(3, 16, (2, 2)),
-          #    nn.ReLU(),
-          #    nn.Conv2d(16, 32, (2, 2)),
-          #    nn.ReLU(),
-          #)
-          #self.image_embedding_size = 32
+          elif obs_space['image'][0] == 3:
+              self.image_conv = nn.Sequential(
+                  nn.Conv2d(3, 16, (2, 2)),
+                  nn.ReLU(),
+                  nn.Conv2d(16, 32, (2, 2)),
+                  nn.ReLU(),
+              )
+              self.image_embedding_size = 32
+          else:
+              raise NotImplementedError
 
         # Define memory
         if self.use_memory:
