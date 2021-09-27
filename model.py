@@ -70,6 +70,7 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
               self.image_embedding_size = 32
           else:
               raise NotImplementedError
+        self.image_embedding_size += 2 # including action and reward
 
         # Define memory
         if self.use_memory:
@@ -134,10 +135,12 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
     def semi_memory_size(self):
         return self.image_embedding_size
 
-    def forward(self, obs, memory, ext=None):
+    def forward(self, obs, memory, prev_action, prev_reward,
+            ext_img=None, ext_act=None, ext_reward=None):
         x = obs.image.transpose(1, 3).transpose(2, 3)
         x = self.image_conv(x)
         x = x.reshape(x.shape[0], -1)
+        x = torch.cat([x, prev_action.unsqueeze(-1), prev_reward.unsqueeze(-1)], dim=-1)
 
         if self.use_memory:
             if self.mem_type=='lstm':
@@ -145,12 +148,22 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
                 hidden = self.memory_module(x, hidden)
                 embedding = hidden[0]
                 memory = torch.cat(hidden, dim=1)
+                ext = None
             else:  # transformers
-                x = torch.cat([ext, x.unsqueeze(0)],  dim=0)
+                _ext_img = ext_img.transpose(2, 4).transpose(3, 4)
+                num_procs, ext_len = _ext_img.shape[:2]
+                _ext_img = self.image_conv(_ext_img.reshape([-1]+list(_ext_img.shape[2:])))
+                _ext_img = _ext_img.reshape(num_procs, ext_len, -1)
+                ext = torch.cat([_ext_img,
+                    ext_act.unsqueeze(-1), ext_reward.unsqueeze(-1)], dim=-1)
+                x = torch.cat([ext, x.unsqueeze(1)],  dim=1).permute(1,0,2)
                 embedding, memory = self.memory_module(x, *memory)
                 embedding = embedding[0]
                 memory = torch.stack(memory,dim=0).permute(2,0,1,3)
-                ext = x[1:].permute(1,0,2)
+                ext = {}
+                ext['image'] = torch.cat([ext_img, obs.image.unsqueeze(1)], dim=1)[:,1:]
+                ext['action'] = torch.cat([ext_act, prev_action.unsqueeze(1)], dim=1)[:,1:]
+                ext['reward'] = torch.cat([ext_reward, prev_reward.unsqueeze(1)], dim=1)[:,1:]
         else:
             embedding = x
 
