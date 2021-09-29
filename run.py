@@ -1,4 +1,5 @@
-import os, sys
+import os, sys, time
+import datetime
 import gpustat
 import subprocess
 
@@ -9,12 +10,12 @@ import subprocess
 min_required_mem = 0 # e.g., 20000, 40000
 servers = [
     #'welling', # gpus are inavailable
-    'bengio',
-    'jordan',
-    'hinton',
+    'hinton', # 24GB
     'sutton',
-    'jurgen',
-    'rumelhart'
+    'jurgen', # 16GB
+    'bengio', # 48GB
+    'jordan',
+    'rumelhart',
 ]
 
 # find idle gpus
@@ -32,6 +33,7 @@ for server in servers:
       used_mem = int(used_mem[:-3])
       if total_mem > min_required_mem: # minimum requirement
         if used_mem < 10: # 10 MB
+        #if used_mem < 2000: # 1000 MB
           if (server=='hinton') and (i==4): # not working gpu
             continue
           if (server=='jordan') and (i>=3): # reserved by Gautam
@@ -39,22 +41,55 @@ for server in servers:
           idle_gpus.append([server, i])
   except:
     print(f'{server} gpus are inavailable')
-
+#print(idle_gpus)
+#print(len(idle_gpus));exit(1)
 
 ###############################
 # Run experiments
+#   Empty-5x5
+#    {'algo':'ppo', 'mem_type':'lstm', 'recurrence':4, 'lr':0.001, 'img_encode':0}
+#    {'algo':'ppo', 'mem_type':'lstm', 'recurrence':4, 'lr':0.001, 'img_encode':1}
+#    {'algo':'ppo', 'mem_type':'trxl', 'mem_len':4, 'n_layer':2, 'recurrence':1, 'lr':0.0001, 'img_encode':0},
+#    {'algo':'ppo', 'mem_type':'trxl', 'mem_len':4, 'n_layer':2, 'recurrence':1, 'lr':0.00001, 'img_encode':1},
+#   MemoryS7
+#    {'algo':'ppo', 'mem_type':'lstm', 'recurrence':16, 'lr':0.001, 'img_encode':0}
+#    {'algo':'ppo', 'mem_type':'lstm', 'recurrence':8, 'lr':0.0001, 'img_encode':1}
+#    {'algo':'ppo', 'mem_type':'gtrxl-gru', 'mem_len':8, 'n_layer':1, 'recurrence':1, 'lr':0.0001, 'img_encode':0},
+#    {'algo':'ppo', 'mem_type':'gtrxl-gru', 'mem_len':8, 'n_layer':1, 'recurrence':1, 'lr':0.00001, 'img_encode':1},
+#  OrderMemory-N3
+#    {'algo':'ppo', 'mem_type':'lstm', 'recurrence':16, 'lr':0.001, 'img_encode':0},
+#    {'algo':'ppo', 'mem_type':'lstm', 'recurrence':8, 'lr':0.0001, 'img_encode':1},
+#    {'algo':'ppo', 'mem_type':'gtrxl-gru', 'mem_len':8, 'n_layer':1, 'recurrence':1, 'lr':0.0001, 'img_encode':0},
+#  OrderMemory-N4
 ###############################
-session_name = 'mfrl-MiniGrid-GoodObject-Random-Penalty-VisibleBall'
+date = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
 
 envs = [
-    'MiniGrid-Empty-5x5-v0',
-    'MiniGrid-MemoryS7-v0',
+    'Unity-GridWorld',
+    #'MiniGrid-IMazeS13-v0',
+    #'MiniGrid-OrderMemoryLargeS9N3-v0',
+    #'MiniGrid-OrderMemoryLargeS12N3-v0',
+    #'MiniGrid-OrderMemoryLargeS15N3-v0',
+    #'MiniGrid-OrderMemoryLargeS6N4-v0',
+    #'MiniGrid-OrderMemoryLargeS6N5-v0',
+    #'MiniGrid-OrderMemoryLargeS9N4-v0',
 ]
+session_name = 'mfrl-' + '-'.join(envs) + '-'+date
 models = [
-    {'algo':'ppo', 'mem_type':'lstm', 'recurrence':4, 'lr':0.001, 'img_encode':0},
-    {'algo':'ppo', 'mem_type':'lstm', 'recurrence':4, 'lr':0.001, 'img_encode':1},
-    {'algo':'ppo', 'mem_type':'trxli', 'mem_len':4, 'n_layer':2, 'recurrence':1, 'lr':0.0001, 'img_encode':0},
-    {'algo':'ppo', 'mem_type':'trxli', 'mem_len':4, 'n_layer':2, 'recurrence':1, 'lr':0.0001, 'img_encode':1},
+    {'algo':'ppo', 'mem_type':'lstm', 'recurrence':4, 'lr':0.0001, 'frames':10000000},
+    {'algo':'ppo', 'mem_type':'trxl', 'ext_len':4, 'mem_len':16, 'n_layer':2, 'lr':0.00001, 'frames':10000000},
+    #{'algo':'ppo', 'mem_type':'lstm', 'recurrence':64, 'lr':0.0001, 'img_encode':0, 'frames':10000000},
+    #{'algo':'ppo', 'mem_type':'trxl', 'ext_len':64, 'mem_len':128, 'n_layer':2, 'lr':0.0001, 'img_encode':0, 'frames':10000000},
+    #{'algo':'ppo', 'mem_type':'trxli', 'ext_len':32, 'mem_len':128, 'n_layer':4, 'lr':0.0001, 'img_encode':0, 'frames':10000000},
+    #{'algo':'ppo', 'mem_type':'gtrxl-gru', 'ext_len':32, 'mem_len':128, 'n_layer':4, 'lr':0.0001, 'img_encode':0, 'frames':10000000},
+    #{'algo':'ppo', 'mem_type':'lstm', 'recurrence':32, 'lr':0.00001, 'img_encode':1, 'frames':20000000},
+    #{'algo':'ppo', 'mem_type':'trxl', 'ext_len':32, 'mem_len':128, 'n_layer':3, 'lr':0.00001, 'img_encode':1, 'frames':20000000},
+    #{'algo':'ppo', 'mem_type':'trxli', 'ext_len':32, 'mem_len':128, 'n_layer':3, 'lr':0.00001, 'img_encode':1, 'frames':20000000},
+    #{'algo':'ppo', 'mem_type':'gtrxl-gru', 'ext_len':32, 'mem_len':128, 'n_layer':3, 'lr':0.00001, 'img_encode':1, 'frames':20000000},
+    #{'algo':'vmpo', 'mem_type':'lstm', 'recurrence':64, 'lr':0.0001, 'img_encode':0, 'frames':10000000},
+    #{'algo':'vmpo', 'mem_type':'trxl', 'ext_len':64, 'mem_len':256, 'n_layer':4, 'lr':0.0001, 'img_encode':0, 'frames':10000000},
+    #{'algo':'vmpo', 'mem_type':'trxli', 'ext_len':64, 'mem_len':256, 'n_layer':4, 'lr':0.0001, 'img_encode':0, 'frames':10000000},
+    #{'algo':'vmpo', 'mem_type':'gtrxl-gru', 'ext_len':64, 'mem_len':256, 'n_layer':4, 'lr':0.0001, 'img_encode':0, 'frames':10000000},
 ]
 
 settings = []
@@ -82,9 +117,11 @@ for i, setting in enumerate(settings):
   os.system(f'tmux send-keys -t {session_name}:0.{i+1} "cd ~/rl-starter-files/" Enter')
   os.system(f"""
     tmux send-keys -t {session_name}:0.{i+1} "
-      python3 -m scripts.train {config}
+      CUDA_VISIBLE_DEVICES={gpu_idx} python3 -m scripts.train {config}
       " Enter
   """)
+  time.sleep(60)
 
-os.system(f"tmux select-layout -t {session_name} tiled")
+os.system(f'tmux send-keys -t {session_name}:0.0 "exit" Enter')
+os.system(f"tmux select-layout -t {session_name} even-vertical")
   

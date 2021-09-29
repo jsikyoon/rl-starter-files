@@ -9,6 +9,9 @@ import sys
 import utils
 from model import ACModel
 
+# For unity
+from pyvirtualdisplay import Display
+
 
 # Parse arguments
 
@@ -85,6 +88,9 @@ else:
 
 args.img_encode = True if args.img_encode==1 else False
 
+if args.env.split('-')[0] == 'Unity':
+    args.unity_env = True
+
 # Set run dir
 
 date = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
@@ -124,9 +130,12 @@ txt_logger.info(f"Device: {device}\n")
 
 # Load environments
 
+if args.unity_env:
+    display = Display(backend='xvnc', size=(64, 64), visible=0, rfbport=0)
+    display.start()
 envs = []
 for i in range(args.procs):
-    envs.append(utils.make_env(args.env, args.seed + 10000 * i))
+    envs.append(utils.make_env(args.unity_env, args.env, args.seed + 10000 * i))
 txt_logger.info("Environments loaded\n")
 
 # Load training status
@@ -139,16 +148,15 @@ txt_logger.info("Training status loaded\n")
 
 # Load observations preprocessor
 
-obs_space, preprocess_obss = utils.get_obss_preprocessor(envs[0].observation_space)
+obs_space, preprocess_obss = utils.get_obss_preprocessor(args.unity_env, envs[0].observation_space)
 if "vocab" in status:
     preprocess_obss.vocab.load_vocab(status["vocab"])
 txt_logger.info("Observations preprocessor loaded")
 
 # Load model
-
 acmodel = ACModel(obs_space, envs[0].action_space, args.mem, args.text,
                   args.mem_type, args.n_layer, args.n_head, args.ext_len, args.mem_len,
-                  args.img_encode)
+                  args.img_encode, unity_env=args.unity_env)
 if "model_state" in status:
     acmodel.load_state_dict(status["model_state"])
 acmodel.to(device)
@@ -162,19 +170,19 @@ if args.algo == "a2c":
                             args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
                             args.optim_alpha, args.optim_eps, preprocess_obss,
                             mem_type=args.mem_type, ext_len=args.ext_len, mem_len=args.mem_len, n_layer=args.n_layer,
-                            img_encode=args.img_encode)
+                            img_encode=args.img_encode, unity_env=args.unity_env)
 elif args.algo == "ppo":
     algo = torch_ac.PPOAlgo(envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
                             args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
                             args.optim_eps, args.clip_eps, args.epochs, args.batch_size, preprocess_obss,
                             mem_type=args.mem_type, ext_len=args.ext_len, mem_len=args.mem_len, n_layer=args.n_layer,
-                            img_encode=args.img_encode)
+                            img_encode=args.img_encode, unity_env=args.unity_env)
 elif args.algo == "vmpo":
     algo = torch_ac.VMPOAlgo(envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
                             args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
                             args.optim_eps, args.clip_eps, args.epochs, args.batch_size, preprocess_obss,
                             mem_type=args.mem_type, ext_len=args.ext_len, mem_len=args.mem_len, n_layer=args.n_layer,
-                            img_encode=args.img_encode)
+                            img_encode=args.img_encode, unity_env=args.unity_env)
 else:
     raise ValueError("Incorrect algorithm name: {}".format(args.algo))
 
@@ -242,3 +250,7 @@ while num_frames < args.frames:
             status["vocab"] = preprocess_obss.vocab.vocab
         utils.save_status(status, model_dir)
         txt_logger.info("Status saved")
+
+for _env in envs:
+    _env.close()
+display.stop()
