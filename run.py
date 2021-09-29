@@ -65,7 +65,10 @@ for server in servers:
 date = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
 
 envs = [
-    'Unity-GridWorld',
+    #'Unity-GridWorld',
+    'Unity-OrderSeq4BallsSparse',
+    #'Unity-OrderSeq4BallsBase',
+    #'Unity-OrderSeq5BallsBase',
     #'MiniGrid-IMazeS13-v0',
     #'MiniGrid-OrderMemoryLargeS9N3-v0',
     #'MiniGrid-OrderMemoryLargeS12N3-v0',
@@ -76,8 +79,8 @@ envs = [
 ]
 session_name = 'mfrl-' + '-'.join(envs) + '-'+date
 models = [
-    {'algo':'ppo', 'mem_type':'lstm', 'recurrence':4, 'lr':0.0001, 'frames':10000000},
-    {'algo':'ppo', 'mem_type':'trxl', 'ext_len':4, 'mem_len':16, 'n_layer':2, 'lr':0.00001, 'frames':10000000},
+    {'algo':'ppo', 'mem_type':'lstm', 'recurrence':100, 'lr':0.0001, 'frames':10000000, 'procs': 4},
+    #{'algo':'ppo', 'mem_type':'gtrxl-gru', 'ext_len':100, 'mem_len':10, 'n_layer':6, 'lr':0.00001, 'frames':10000000, 'procs': 4},
     #{'algo':'ppo', 'mem_type':'lstm', 'recurrence':64, 'lr':0.0001, 'img_encode':0, 'frames':10000000},
     #{'algo':'ppo', 'mem_type':'trxl', 'ext_len':64, 'mem_len':128, 'n_layer':2, 'lr':0.0001, 'img_encode':0, 'frames':10000000},
     #{'algo':'ppo', 'mem_type':'trxli', 'ext_len':32, 'mem_len':128, 'n_layer':4, 'lr':0.0001, 'img_encode':0, 'frames':10000000},
@@ -120,7 +123,7 @@ for i, setting in enumerate(settings):
       CUDA_VISIBLE_DEVICES={gpu_idx} python3 -m scripts.train {config}
       " Enter
   """)
-  time.sleep(60)
+  time.sleep(1)
 
 os.system(f'tmux send-keys -t {session_name}:0.0 "exit" Enter')
 os.system(f"tmux select-layout -t {session_name} even-vertical")
