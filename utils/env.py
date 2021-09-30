@@ -18,7 +18,8 @@ class UnityGym3D:
     assert size[0] == size[1]
     
     with self.LOCK:
-      env = UnityEnvironment(file_name=env_file, worker_id=id+seed, seed=seed, timeout_wait=100)
+      env = UnityEnvironment(file_name=env_file, worker_id=id+seed, seed=seed, timeout_wait=100,
+          base_port=portpicker.pick_unused_port())
       env = UnityToGymWrapper(env, True,  allow_multiple_obs=True)
     self._env = env
     self._size = size
