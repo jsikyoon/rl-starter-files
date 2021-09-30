@@ -90,6 +90,8 @@ args.img_encode = True if args.img_encode==1 else False
 
 if args.env.split('-')[0] == 'Unity':
     args.unity_env = True
+else:
+    args.unity_env = False
 
 # Set run dir
 
@@ -136,6 +138,7 @@ if args.unity_env:
 envs = []
 for i in range(args.procs):
     envs.append(utils.make_env(args.unity_env, args.env, args.seed + 10000 * i))
+eval_env = utils.make_env(args.unity_env, args.env, args.seed + 10000 * args.procs)
 txt_logger.info("Environments loaded\n")
 
 # Load training status
@@ -166,19 +169,19 @@ txt_logger.info("{}\n".format(acmodel))
 # Load algo
 
 if args.algo == "a2c":
-    algo = torch_ac.A2CAlgo(envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
+    algo = torch_ac.A2CAlgo(eval_env, envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
                             args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
                             args.optim_alpha, args.optim_eps, preprocess_obss,
                             mem_type=args.mem_type, ext_len=args.ext_len, mem_len=args.mem_len, n_layer=args.n_layer,
                             img_encode=args.img_encode, unity_env=args.unity_env)
 elif args.algo == "ppo":
-    algo = torch_ac.PPOAlgo(envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
+    algo = torch_ac.PPOAlgo(eval_env, envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
                             args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
                             args.optim_eps, args.clip_eps, args.epochs, args.batch_size, preprocess_obss,
                             mem_type=args.mem_type, ext_len=args.ext_len, mem_len=args.mem_len, n_layer=args.n_layer,
                             img_encode=args.img_encode, unity_env=args.unity_env)
 elif args.algo == "vmpo":
-    algo = torch_ac.VMPOAlgo(envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
+    algo = torch_ac.VMPOAlgo(eval_env, envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
                             args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
                             args.optim_eps, args.clip_eps, args.epochs, args.batch_size, preprocess_obss,
                             mem_type=args.mem_type, ext_len=args.ext_len, mem_len=args.mem_len, n_layer=args.n_layer,
@@ -232,6 +235,10 @@ while num_frames < args.frames:
 
         header += ["return_" + key for key in return_per_episode.keys()]
         data += return_per_episode.values()
+
+        # evaluation
+        header += ["eval_return"]
+        data += [algo.run_evaluation()]
 
         if status["num_frames"] == 0:
             csv_logger.writerow(header)
