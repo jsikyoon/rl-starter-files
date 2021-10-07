@@ -10,6 +10,10 @@ import numpy as np
 from mlagents_envs.environment import UnityEnvironment
 from gym_unity.envs import UnityToGymWrapper
 
+# For minigrid
+from PIL import Image
+from gym_minigrid.minigrid import Grid
+
 
 class UnityGym3D:
   LOCK = threading.Lock()
@@ -22,13 +26,13 @@ class UnityGym3D:
           base_port=portpicker.pick_unused_port())
       env = UnityToGymWrapper(env, True,  allow_multiple_obs=True)
     self._env = env
-    self._size = size
+    self._size = size 
     self.action_size = action_size
 
   @property
   def observation_space(self):
     shape = self._size +tuple([3])
-    space = gym.spaces.Box(low=0, high=255, shape=shape, dtype=np.uint8)
+    space = gym.spaces.Box(low=0, high=1, shape=shape, dtype=np.float)
     return gym.spaces.Dict({'image': space})
 
   @property
@@ -40,80 +44,94 @@ class UnityGym3D:
 
   def reset(self):
     with self.LOCK:
-      obs = self._env.reset()
-      image = obs[0]
-      top_view = obs[2]
-
-    #image = np.transpose(image, (2, 0, 1))  # 3, 64, 64
-    #top_view = np.transpose(top_view, (2, 0, 1))  # 3, 64, 64
-
-    #return {'image': image, 'top_view': top_view}
-    return [image]
+      _obs = self._env.reset()
+      obs = {}
+      obs['image'] = _obs[0]/255.0
+    return obs
 
   def step(self, action):
     action = action + 1 # unity reserve action 0 as staying still
-    obs, r, done, info = self._env.step(action)
-
-    if r > 0.:
-      reward = 3.
-    else:
-      reward = 0.
-
-    image = obs[0]
-    top_view = obs[2]
-
-    #image = np.transpose(image, (2, 0, 1))  # 3, 64, 64
-    #top_view = np.transpose(top_view, (2, 0, 1))  # 3, 64, 64
-    #obs = {'image': image, 'top_view': top_view}
-    obs = [image]
-
+    _obs, reward, done, info = self._env.step(action)
+    obs = {}
+    obs['image'] = _obs[0]/255.0
     return obs, reward, done, info
 
 
-def make_env(unity_env, env_key, seed=None):
-    if unity_env:
+class Minigrid:
+  LOCK = threading.Lock()
+
+  def __init__(self, env_key, img_obs=False, action_size=3, size=(64, 64), seed=0):
+    assert size[0] == size[1]
+
+    with self.LOCK:
+        env = gym.make(env_key)
+        env.seed(seed)
+    
+    self._env = env
+    self._img_obs = img_obs
+    self.action_size = action_size
+    self._size = size
+
+  @property
+  def observation_space(self):
+    if self._img_obs:
+      shape = self._size +tuple([3])
+      space = gym.spaces.Box(low=0, high=1, shape=shape, dtype=np.float)
+    else:
+      shape = (self._env.agent_view_size, self._env.agent_view_size, 3)
+      space = gym.spaces.Box(low=0, high=10, shape=shape, dtype=np.uint8)
+    return gym.spaces.Dict({'image': space})
+
+  @property
+  def action_space(self):
+    return gym.spaces.Discrete(self.action_size)
+
+  def close(self):
+    return self._env.close()
+
+  def _get_agentview(self, img, agent_view_size):
+    grid, vis_mask = Grid.decode(img)
+    partialview = grid.render(
+        8,
+        agent_pos=(agent_view_size // 2, agent_view_size - 1),
+        agent_dir=3,
+        highlight_mask=vis_mask
+    )
+    partialview = Image.fromarray(partialview)
+    partialview = np.asarray(partialview.resize(self._size, Image.BILINEAR), dtype=np.float)/255.0
+    return partialview
+    
+  def reset(self):
+    with self.LOCK:
+      obs = self._env.reset()
+      obs = self._env.gen_obs()
+      if self._img_obs:
+        obs['image'] = self._get_agentview(obs['image'], self._env.agent_view_size)
+    return obs
+
+  def step(self, action):
+    obs, reward, done, info = self._env.step(action)
+    if done:
+      obs = self._env.reset()
+    obs = self._env.gen_obs()
+    if self._img_obs:
+      obs['image'] = self._get_agentview(obs['image'], self._env.agent_view_size)
+    return obs, reward, done, info
+
+
+def make_env(env_key, img_obs=False, seed=None):
+    if env_key.split('-')[0] == 'Unity':
         unity_env_dir = 'unity_envs'
         os.makedirs(unity_env_dir, exist_ok=True)
         env_name = env_key.split('-')[1]
         if env_name == 'GridWorld':
-            env_name = 'GridWorld'
-        elif env_name == 'OrderSeq4BallsSparse':
-            env_name = 'AreaLSizeL4BallFixPosDist3FgNoResetPos'
-        elif env_name == 'OrderSeq4BallsBase':
-            env_name = 'AreaLSizeL4BallFixPosDist2FgNoResetPos'
-        elif env_name == 'OrderSeq5BallsBase':
-            env_name = 'AreaLSizeL5BallFixPosDist2FgNoResetPos'
-        else:
-            raise NotImplementedError(f'{env_name} is not built yet.')
-        if not os.path.exists(os.path.join(unity_env_dir, env_name)):
-            if env_name == 'GridWorld':
-                os.system(f'wget https://www.dropbox.com/s/gh8z8f0z90f4nvq/GridWorld.zip -P {unity_env_dir}')
-                zipfile_name = 'GridWorld.zip'
-            elif env_name == 'AreaLSizeL4BallFixPosDist3FgNoResetPos':
-                os.system(f'wget https://www.dropbox.com/s/c4u378cptced57m/AreaLSizeL4BallFixPosDist3FgNoResetPos.zip -P {unity_env_dir}')
-                zipfile_name = 'AreaLSizeL4BallFixPosDist3FgNoResetPos.zip'
-            elif env_name == 'AreaLSizeL4BallFixPosDist2FgNoResetPos':
-                os.system(f'wget https://www.dropbox.com/s/sqi9ir7bnkle9ff/AreaLSizeL4BallFixPosDist2FgNoResetPos.zip -P {unity_env_dir}')
-                zipfile_name = 'AreaLSizeL4BallFixPosDist2FgNoResetPos.zip'
-            elif env_name == 'AreaLSizeL5BallFixPosDist2FgNoResetPos':
-                os.system(f'wget https://www.dropbox.com/s/9wzo4eu4qmhucnm/AreaLSizeL5BallFixPosDist2FgNoResetPos.zip -P {unity_env_dir}')
-                zipfile_name = 'AreaLSizeL5BallFixPosDist2FgNoResetPos.zip'
-            else:
-                raise NotImplementedError(f'{env_name} is not built yet.')
-            with zipfile.ZipFile(os.path.join(unity_env_dir,zipfile_name),"r") as zip_ref:
-                zip_ref.extractall(unity_env_dir)
-            dir_name = zipfile_name.split('.')[0]
-            os.system(f'chmod 755 -R {unity_env_dir}/{dir_name}')
-        if env_name == 'GridWorld':
             env_name = 'GridWorld/GridWorld-linux.x86_64'
-            unity_env = UnityEnvironment(os.path.join('unity_envs',env_name),
-                base_port=portpicker.pick_unused_port(), side_channels=[])
-            env = UnityToGymWrapper(unity_env, True, True, True, seed)
+            action_size = 4
         elif 'AreaLSize' in env_name:
-            env = UnityGym3D(os.path.join('unity_envs',env_name,'OrderSeqLinux1Area.x86_64'), seed=seed)
-        else:
-            raise NotImplementedError(f'{env_name} is not built yet.')
+            env_name += '/OrderSeqLinux1Area.x86_64'
+            action_size = 3
+        env = UnityGym3D(os.path.join('unity_envs',env_name),
+            action_size=action_size, seed=seed)
     else:
-        env = gym.make(env_key)
-        env.seed(seed)
+        env = Minigrid(env_key, img_obs=img_obs)
     return env

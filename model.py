@@ -19,7 +19,7 @@ def init_params(m):
 class ACModel(nn.Module, torch_ac.RecurrentACModel):
     def __init__(self, obs_space, action_space, use_memory=False, use_text=False,
                  mem_type='lstm', n_layer=5, n_head=8, ext_len=10, mem_len=10,
-                 img_encode=False, unity_env=False):
+                 img_encode=False):
         super().__init__()
 
         # Decide which components are enabled
@@ -29,7 +29,8 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
         self.img_encode = img_encode
 
         # Define image embedding
-        if img_encode or unity_env: # from Dreamer image encoder
+        print(obs_space)
+        if img_encode: # from Dreamer image encoder
           depth = 32
           act = nn.ELU
           kernels = (4, 4, 4, 4)
