@@ -93,7 +93,7 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
                         self.image_embedding_size, n_layer=n_layer, n_head=n_head,
                         d_model=self.semi_memory_size,
                         d_head=self.semi_memory_size//n_head,
-                        d_inner=self.semi_memory_size*2,
+                        d_inner=self.semi_memory_size,
                         pre_lnorm=pre_lnorm,
                         tgt_len=1, ext_len=ext_len, mem_len=mem_len, gate=gate)
             else:
