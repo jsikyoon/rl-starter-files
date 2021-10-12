@@ -89,8 +89,10 @@ class GateGRU(nn.Module):
                 nn.Linear(d_model*2, d_model, bias=False),
                 nn.Sigmoid()
         )
+        _linear = nn.Linear(d_model*2, d_model)
+        _linear.bias.data.fill_(2.0)
         self.layer_z = nn.Sequential(
-                nn.Linear(d_model*2, d_model),
+                _linear,
                 nn.Sigmoid()
         )
         self.layer_h = nn.Sequential(
