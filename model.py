@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torch.distributions.categorical import Categorical
 import torch_ac
 
-from mem_transformer import MemTransformer
+from mem_transformer import MemTransformer, weights_init
 
 # Function from https://github.com/ikostrikov/pytorch-a2c-ppo-acktr/blob/master/model.py
 def init_params(m):
@@ -31,7 +31,7 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
         # Define image embedding
         print(obs_space)
         if img_encode: # from Dreamer image encoder
-          depth = 32
+          depth = 8
           act = nn.ELU
           kernels = (4, 4, 4, 4)
           layers = []
@@ -96,6 +96,7 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
                         d_inner=self.semi_memory_size,
                         pre_lnorm=pre_lnorm,
                         tgt_len=1, ext_len=ext_len, mem_len=mem_len, gate=gate)
+                self.memory_module.apply(weights_init)
             else:
                 raise ValueError("The Memory must be lstm or trxls")
 
@@ -172,6 +173,7 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
             embed_text = self._get_embed_text(obs.text)
             embedding = torch.cat((embedding, embed_text), dim=1)
 
+        #actor_output = self.actor(embedding.detach())
         actor_output = self.actor(embedding)
         dist = Categorical(logits=F.log_softmax(actor_output, dim=1))
 

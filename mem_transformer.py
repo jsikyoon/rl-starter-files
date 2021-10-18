@@ -12,6 +12,68 @@ import torch.nn.functional as F
 #from proj_adaptive_softmax import ProjectedAdaptiveLogSoftmax
 #from log_uniform_sampler import LogUniformSampler, sample_logits
 
+
+# default setting of TrXL https://github.com/kimiyoung/transformer-xl/blob/master/pytorch/train.py
+class init_args():
+    def __init__(self):
+        super(init_args, self).__init__()
+        self.init = 'normal'
+        self.emb_init = 'normal'
+        self.init_range = 0.1
+        self.emb_init_range = 0.01
+        self.init_std = 0.02
+        self.proj_init_std = 0.01
+args = init_args()
+
+def init_weight(weight):
+    if args.init == 'uniform':
+        nn.init.uniform_(weight, -args.init_range, args.init_range)
+    elif args.init == 'normal':
+        nn.init.normal_(weight, 0.0, args.init_std)
+
+def init_bias(bias):
+    nn.init.constant_(bias, 0.0)
+
+def weights_init(m):
+    classname = m.__class__.__name__
+    if classname.find('Linear') != -1:
+        if hasattr(m, 'weight') and m.weight is not None:
+            init_weight(m.weight)
+        if hasattr(m, 'bias') and m.bias is not None:
+            init_bias(m.bias)
+    elif classname.find('AdaptiveEmbedding') != -1:
+        if hasattr(m, 'emb_projs'):
+            for i in range(len(m.emb_projs)):
+                if m.emb_projs[i] is not None:
+                    nn.init.normal_(m.emb_projs[i], 0.0, args.proj_init_std)
+    elif classname.find('Embedding') != -1:
+        if hasattr(m, 'weight'):
+            init_weight(m.weight)
+    elif classname.find('ProjectedAdaptiveLogSoftmax') != -1:
+        if hasattr(m, 'cluster_weight') and m.cluster_weight is not None:
+            init_weight(m.cluster_weight)
+        if hasattr(m, 'cluster_bias') and m.cluster_bias is not None:
+            init_bias(m.cluster_bias)
+        if hasattr(m, 'out_projs'):
+            for i in range(len(m.out_projs)):
+                if m.out_projs[i] is not None:
+                    nn.init.normal_(m.out_projs[i], 0.0, args.proj_init_std)
+    elif classname.find('LayerNorm') != -1:
+        if hasattr(m, 'weight'):
+            nn.init.normal_(m.weight, 1.0, args.init_std)
+        if hasattr(m, 'bias') and m.bias is not None:
+            init_bias(m.bias)
+    elif classname.find('TransformerLM') != -1:
+        if hasattr(m, 'r_emb'):
+            init_weight(m.r_emb)
+        if hasattr(m, 'r_w_bias'):
+            init_weight(m.r_w_bias)
+        if hasattr(m, 'r_r_bias'):
+            init_weight(m.r_r_bias)
+        if hasattr(m, 'r_bias'):
+            init_bias(m.r_bias)
+
+
 class GatePlus(nn.Module):
     def __init__(self):
         super(GatePlus, self).__init__()
@@ -234,9 +296,9 @@ class MultiHeadAttn(nn.Module):
         attn_score.mul_(self.scale)
         if attn_mask is not None and attn_mask.any().item():
             if attn_mask.dim() == 2:
-                attn_score.masked_fill_(attn_mask[None,:,:,None], -float('inf'))
+                attn_score.masked_fill_(attn_mask[None,:,:,None].bool(), -float('inf')).type_as(attn_score)
             elif attn_mask.dim() == 3:
-                attn_score.masked_fill_(attn_mask[:,:,:,None], -float('inf'))
+                attn_score.masked_fill_(attn_mask[:,:,:,None].bool(), -float('inf')).type_as(attn_score)
 
         # [qlen x klen x bsz x n_head]
         attn_prob = F.softmax(attn_score, dim=1)
@@ -472,9 +534,9 @@ class RelLearnableMultiHeadAttn(RelMultiHeadAttn):
         #### compute attention probability
         if attn_mask is not None and attn_mask.any().item():
             if attn_mask.dim() == 2:
-                attn_score.masked_fill_(attn_mask[None,:,:,None], -float('inf'))
+                attn_score.masked_fill_(attn_mask[None,:,:,None].bool(), -float('inf')).type_as(attn_score)
             elif attn_mask.dim() == 3:
-                attn_score.masked_fill_(attn_mask[:,:,:,None], -float('inf'))
+                attn_score.masked_fill_(attn_mask[:,:,:,None].bool(), -float('inf')).type_as(attn_score)
 
         # [qlen x klen x bsz x n_head]
         attn_prob = F.softmax(attn_score, dim=1)
@@ -624,7 +686,7 @@ class MemTransformer(nn.Module):
     def __init__(self, d_inp, n_layer, n_head, d_model, d_head, d_inner,
                  dropout=0.0, dropatt=0.0, pre_lnorm=False,
                  tgt_len=None, ext_len=None, mem_len=None,
-                 same_length=False, attn_type=0, clamp_len=-1, gate='plus'):
+                 same_length=False, attn_type=2, clamp_len=-1, gate='plus'):
         super(MemTransformer, self).__init__()
 
         self.d_inp = d_inp
