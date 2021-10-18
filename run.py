@@ -103,7 +103,7 @@ models = [
     #{'algo':'ppo', 'mem_type':'trxl', 'recurrence':1, 'ext_len':64, 'mem_len':1, 'n_layer':4, 'lr':0.0001, 'frames':3000000, 'procs': 16, 'img_encode': 1, 'seed':3},
     #{'algo':'ppo', 'mem_type':'trxl', 'recurrence':1, 'ext_len':128, 'mem_len':1, 'n_layer':4, 'lr':0.0001, 'frames':3000000, 'procs': 16, 'img_encode': 1, 'seed':1},
     #{'algo':'ppo', 'mem_type':'trxl', 'recurrence':1, 'ext_len':128, 'mem_len':1, 'n_layer':4, 'lr':0.0001, 'frames':3000000, 'procs': 16, 'img_encode': 1, 'seed':2},
-    {'algo':'ppo', 'mem_type':'trxl', 'recurrence':1, 'ext_len':128, 'mem_len':1, 'n_layer':4, 'lr':0.0001, 'frames':3000000, 'procs': 16, 'img_encode': 1, 'seed':3},
+    {'algo':'ppo', 'mem_type':'trxl', 'recurrence':1, 'attn_type':2, 'ext_len':128, 'mem_len':1, 'n_layer':4, 'lr':0.0001, 'frames':3000000, 'procs': 16, 'img_encode': 1, 'seed':3},
 
     #{'algo':'ppo', 'mem_type':'trxl', 'recurrence':1, 'ext_len':64, 'mem_len':32, 'n_layer':8, 'lr':0.0001, 'frames':1000000, 'procs': 16, 'img_encode': 1},
     #{'algo':'ppo', 'mem_type':'trxl', 'recurrence':1, 'ext_len':64, 'mem_len':32, 'n_layer':16, 'lr':0.0001, 'frames':1000000, 'procs': 16, 'img_encode': 1},

@@ -70,6 +70,7 @@ parser.add_argument("--mem_type", type=str, default='lstm',
                     help="memory type: lstm | trxl | trxli | \
                     gtrxl-input | gtrxl-output | gtrxl-highway | \
                     gtrxl-sigmoidtanh | gtrxl-gru")
+parser.add_argument("--attn_type", type=int, default=2, help="attention type")
 parser.add_argument("--n_layer", type=int, default=5, help="TrXL layer num")
 parser.add_argument("--n_head", type=int, default=8, help="TrXL head num")
 parser.add_argument("--ext_len", type=int, default=20, help="the length of given input that is not target")
@@ -109,7 +110,7 @@ elif args.algo == 'ppo':
 if args.mem:
     default_model_name += f"_{args.mem_type}_Rec{args.recurrence}"
     if 'trxl' in args.mem_type:
-        default_model_name += f"_Nlayer{args.n_layer}_ExtLen{args.ext_len}_MemLen{args.mem_len}"
+        default_model_name += f"_AttnType{args.attn_type}_Nlayer{args.n_layer}_ExtLen{args.ext_len}_MemLen{args.mem_len}"
 default_model_name += f"_Lr{args.lr}_seed{args.seed}_{date}"
 
 model_name = args.model or default_model_name
@@ -166,7 +167,7 @@ txt_logger.info("Observations preprocessor loaded")
 
 # Load model
 acmodel = ACModel(obs_space, envs[0].action_space, args.mem, args.text,
-                  args.mem_type, args.n_layer, args.n_head, args.ext_len, args.mem_len,
+                  args.mem_type, args.attn_type, args.n_layer, args.n_head, args.ext_len, args.mem_len,
                   args.img_encode)
 if "model_state" in status:
     acmodel.load_state_dict(status["model_state"])
@@ -188,7 +189,7 @@ elif args.algo == "ppo":
                             mem_type=args.mem_type, ext_len=args.ext_len, mem_len=args.mem_len, n_layer=args.n_layer)
 elif args.algo == "vmpo":
     acmodel_learner = ACModel(obs_space, envs[0].action_space, args.mem, args.text,
-                              args.mem_type, args.n_layer, args.n_head, args.ext_len, args.mem_len,
+                              args.mem_type, args.attn_type, args.n_layer, args.n_head, args.ext_len, args.mem_len,
                               args.img_encode).to(device)
     acmodel_learner.load_state_dict(acmodel.state_dict())
     algo = torch_ac.VMPOAlgo(eval_envs, envs, acmodel, acmodel_learner, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,

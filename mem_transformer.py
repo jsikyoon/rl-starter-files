@@ -900,13 +900,14 @@ class MemTransformer(nn.Module):
         return core_out, new_mems
 
     def forward(self, data, *mems):
-        if not mems: mems = self.init_mems()
+        #if not mems: mems = self.init_mems()
 
-        hidden, new_mems = self._forward(data, mems=mems)
+        hidden, new_mems = self._forward(data,
+            mems=mems if self.attn_type!=2 else None)
 
         pred_hid = hidden[-self.tgt_len:]
 
-        return pred_hid, new_mems
+        return pred_hid, new_mems if self.attn_type!=2 else mems
 
 if __name__ == '__main__':
     import argparse

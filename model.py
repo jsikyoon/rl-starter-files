@@ -18,7 +18,7 @@ def init_params(m):
 
 class ACModel(nn.Module, torch_ac.RecurrentACModel):
     def __init__(self, obs_space, action_space, use_memory=False, use_text=False,
-                 mem_type='lstm', n_layer=5, n_head=8, ext_len=10, mem_len=10,
+                 mem_type='lstm', attn_type=2, n_layer=5, n_head=8, ext_len=10, mem_len=10,
                  img_encode=False):
         super().__init__()
 
@@ -26,6 +26,7 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
         self.use_text = use_text
         self.use_memory = use_memory
         self.mem_type = mem_type
+        self.attn_type = attn_type
         self.img_encode = img_encode
 
         # Define image embedding
@@ -94,7 +95,7 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
                         d_model=self.semi_memory_size,
                         d_head=self.semi_memory_size//n_head,
                         d_inner=self.semi_memory_size,
-                        pre_lnorm=pre_lnorm,
+                        pre_lnorm=pre_lnorm, attn_type=attn_type,
                         tgt_len=1, ext_len=ext_len, mem_len=mem_len, gate=gate)
                 self.memory_module.apply(weights_init)
             else:
