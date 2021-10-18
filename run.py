@@ -8,7 +8,8 @@ import subprocess
 ###############################
 # GPU cluster info.
 #min_required_mem = 10000 # e.g., 20000, 40000
-min_required_mem = 10000 # e.g., 20000, 40000
+#min_required_mem = 20000 # e.g., 20000, 40000
+min_required_mem = 40000 # e.g., 20000, 40000
 used_mem_threshold = 10
 servers = [
     #'welling', # gpus are inavailable
@@ -40,8 +41,8 @@ for server in servers:
             continue
           if (server=='bengio') and (i==5): # not working gpu
             continue
-          if (server=='jordan') and (i>=3): # reserved by Gautam
-            continue
+          #if (server=='jordan') and (i>=3): # reserved by Gautam
+          #  continue
           idle_gpus.append([server, i])
   except:
     print(f'{server} gpus are inavailable')
@@ -54,14 +55,62 @@ for server in servers:
 date = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
 
 envs = [
+    #'MiniGrid-Empty-5x5-v0',
+    #'MiniGrid-IMazeS5-v0',
+    #'MiniGrid-IMazeS9-v0',
     #'MiniGrid-IMazeS13-v0',
-    'Unity-AreaLSizeL4BallFixPosDist3FgNoResetPos',
+    #'MiniGrid-IMazeS21-v0',
+    #'MiniGrid-IMazeS31-v0',
+    #'MiniGrid-IMazeS51-v0',
+    'MiniGrid-IMazeS71-v0',
+    #'MiniGrid-IMazeS91-v0',
+    #'MiniGrid-3StagesEasy-v0',
+    #'Unity-AreaLSizeL4BallFixPosDist3FgNoResetPos',
 ]
 session_name = 'mfrl-' + '-'.join(envs) + '-'+date
 models = [
-    # for minigrid
-    {'algo':'ppo', 'mem_type':'lstm', 'recurrence':64, 'lr':0.0001, 'frames':10000000, 'procs': 2, 'img_encode': 0},
-    #{'algo':'ppo', 'mem_type':'gtrxl-gru', 'ext_len':64, 'mem_len':128, 'n_layer':2, 'lr':0.00001, 'frames':10000000, 'procs': 2, 'img_encode': 1},
+    #{'algo':'vmpo', 'mem_type':'lstm', 'recurrence':16, 'frames-per-proc':64, 'alpha':0.1, 'T_target':1, 'epochs': 5, 'lr':0.0001, 'frames':10000000, 'procs': 16, 'img_encode': 1},
+    #{'algo':'vmpo', 'mem_type':'lstm', 'recurrence':32, 'frames-per-proc':64, 'alpha':0.1, 'T_target':1, 'epochs': 5, 'lr':0.0001, 'frames':10000000, 'procs': 16, 'img_encode': 1},
+    #{'algo':'vmpo', 'mem_type':'lstm', 'recurrence':64, 'frames-per-proc':64, 'alpha':0.1, 'T_target':1, 'epochs': 5, 'lr':0.0001, 'frames':10000000, 'procs': 16, 'img_encode': 1},
+    #{'algo':'vmpo', 'mem_type':'lstm', 'recurrence':32, 'frames-per-proc':32, 'alpha':0.1, 'T_target':5, 'epochs': 1, 'lr':0.0001, 'frames':10000000, 'procs': 16, 'img_encode': 1},
+    #{'algo':'vmpo', 'mem_type':'lstm', 'recurrence':32, 'frames-per-proc':32, 'alpha':0.1, 'T_target':10, 'epochs': 1, 'lr':0.0001, 'frames':10000000, 'procs': 16, 'img_encode': 1},
+    #{'algo':'vmpo', 'mem_type':'trxl', 'recurrence':32, 'frames-per-proc':32, 'ext_len':16, 'mem_len':16, 'n_layer':2, 'alpha':0.1, 'T_target':10, 'epochs': 1, 'lr':0.0001, 'frames':1000000, 'procs': 16, 'img_encode': 1},
+    #{'algo':'vmpo', 'mem_type':'trxli', 'recurrence':32, 'frames-per-proc':32, 'ext_len':16, 'mem_len':16, 'n_layer':2, 'alpha':0.1, 'T_target':10, 'epochs': 1, 'lr':0.0001, 'frames':1000000, 'procs': 16, 'img_encode': 1},
+    #{'algo':'vmpo', 'mem_type':'gtrxl-gru', 'recurrence':16, 'frames-per-proc':128, 'ext_len':128, 'mem_len':16, 'n_layer':4, 'alpha':0.1, 'T_target':1, 'epochs': 20, 'lr':0.0001, 'frames':1000000, 'procs': 16, 'img_encode': 1},
+    #{'algo':'vmpo', 'mem_type':'gtrxl-gru', 'recurrence':16, 'frames-per-proc':128, 'ext_len':128, 'mem_len':16, 'n_layer':6, 'alpha':0.1, 'T_target':1, 'epochs': 20, 'lr':0.0001, 'frames':1000000, 'procs': 16, 'img_encode': 1},
+    #{'algo':'vmpo', 'mem_type':'gtrxl-gru', 'recurrence':16, 'frames-per-proc':128, 'ext_len':128, 'mem_len':16, 'n_layer':8, 'alpha':0.1, 'T_target':1, 'epochs': 20, 'lr':0.0001, 'frames':1000000, 'procs': 16, 'img_encode': 1},
+    #{'algo':'vmpo', 'mem_type':'gtrxl-gru', 'recurrence':16, 'frames-per-proc':128, 'ext_len':128, 'mem_len':16, 'n_layer':10, 'alpha':0.1, 'T_target':1, 'epochs': 20, 'lr':0.0001, 'frames':1000000, 'procs': 16, 'img_encode': 1},
+    #{'algo':'vmpo', 'mem_type':'gtrxl-gru', 'recurrence':16, 'frames-per-proc':128, 'ext_len':128, 'mem_len':16, 'n_layer':15, 'alpha':0.1, 'T_target':1, 'epochs': 20, 'lr':0.0001, 'frames':1000000, 'procs': 16, 'img_encode': 1},
+    #{'algo':'vmpo', 'mem_type':'gtrxl-gru', 'recurrence':32, 'frames-per-proc':32, 'ext_len':64, 'mem_len':16, 'n_layer':4, 'alpha':0.1, 'T_target':5, 'epochs': 1, 'lr':0.0001, 'frames':1000000, 'procs': 16, 'img_encode': 1},
+    #{'algo':'vmpo', 'mem_type':'gtrxl-gru', 'recurrence':32, 'frames-per-proc':32, 'ext_len':64, 'mem_len':16, 'n_layer':4, 'alpha':0.1, 'T_target':10, 'epochs': 1, 'lr':0.0001, 'frames':1000000, 'procs': 16, 'img_encode': 1},
+
+    #{'algo':'ppo', 'mem_type':'lstm', 'recurrence':16, 'lr':0.0001, 'frames':3000000, 'procs': 16, 'img_encode': 1, 'seed':1},
+    #{'algo':'ppo', 'mem_type':'lstm', 'recurrence':16, 'lr':0.0001, 'frames':3000000, 'procs': 16, 'img_encode': 1, 'seed':2},
+    #{'algo':'ppo', 'mem_type':'lstm', 'recurrence':16, 'lr':0.0001, 'frames':3000000, 'procs': 16, 'img_encode': 1, 'seed':3},
+
+    #{'algo':'ppo', 'mem_type':'lstm', 'recurrence':32, 'lr':0.0001, 'frames':10000000, 'procs': 16, 'img_encode': 1},
+    #{'algo':'ppo', 'mem_type':'lstm', 'recurrence':64, 'lr':0.0001, 'frames':10000000, 'procs': 16, 'img_encode': 1},
+    #{'algo':'ppo', 'mem_type':'lstm', 'recurrence':128, 'lr':0.0001, 'frames':10000000, 'procs': 16, 'img_encode': 1},
+    #{'algo':'ppo', 'mem_type':'trxl', 'recurrence':1, 'ext_len':128, 'mem_len':32, 'n_layer':8, 'lr':0.0001, 'frames':1000000, 'procs': 16, 'img_encode': 1},
+    #{'algo':'ppo', 'mem_type':'trxl', 'recurrence':1, 'ext_len':128, 'mem_len':32, 'n_layer':16, 'lr':0.0001, 'frames':1000000, 'procs': 16, 'img_encode': 1},
+
+    #{'algo':'ppo', 'mem_type':'trxl', 'recurrence':1, 'ext_len':128, 'mem_len':1, 'n_layer':4, 'entropy-coef':0.0, 'lr':0.0001, 'frames':3000000, 'procs': 16, 'img_encode': 1, 'seed':1},
+    #{'algo':'ppo', 'mem_type':'trxl', 'recurrence':1, 'ext_len':128, 'mem_len':1, 'n_layer':4, 'entropy-coef':0.0, 'lr':0.0001, 'frames':3000000, 'procs': 16, 'img_encode': 1, 'seed':2},
+    #{'algo':'ppo', 'mem_type':'trxl', 'recurrence':1, 'ext_len':128, 'mem_len':1, 'n_layer':4, 'entropy-coef':0.0, 'lr':0.0001, 'frames':3000000, 'procs': 16, 'img_encode': 1, 'seed':3},
+
+    #{'algo':'ppo', 'mem_type':'trxl', 'recurrence':1, 'ext_len':64, 'mem_len':1, 'n_layer':4, 'lr':0.0001, 'frames':3000000, 'procs': 16, 'img_encode': 1, 'seed':1},
+    #{'algo':'ppo', 'mem_type':'trxl', 'recurrence':1, 'ext_len':64, 'mem_len':1, 'n_layer':4, 'lr':0.0001, 'frames':3000000, 'procs': 16, 'img_encode': 1, 'seed':2},
+    #{'algo':'ppo', 'mem_type':'trxl', 'recurrence':1, 'ext_len':64, 'mem_len':1, 'n_layer':4, 'lr':0.0001, 'frames':3000000, 'procs': 16, 'img_encode': 1, 'seed':3},
+    #{'algo':'ppo', 'mem_type':'trxl', 'recurrence':1, 'ext_len':128, 'mem_len':1, 'n_layer':4, 'lr':0.0001, 'frames':3000000, 'procs': 16, 'img_encode': 1, 'seed':1},
+    #{'algo':'ppo', 'mem_type':'trxl', 'recurrence':1, 'ext_len':128, 'mem_len':1, 'n_layer':4, 'lr':0.0001, 'frames':3000000, 'procs': 16, 'img_encode': 1, 'seed':2},
+    {'algo':'ppo', 'mem_type':'trxl', 'recurrence':1, 'ext_len':128, 'mem_len':1, 'n_layer':4, 'lr':0.0001, 'frames':3000000, 'procs': 16, 'img_encode': 1, 'seed':3},
+
+    #{'algo':'ppo', 'mem_type':'trxl', 'recurrence':1, 'ext_len':64, 'mem_len':32, 'n_layer':8, 'lr':0.0001, 'frames':1000000, 'procs': 16, 'img_encode': 1},
+    #{'algo':'ppo', 'mem_type':'trxl', 'recurrence':1, 'ext_len':64, 'mem_len':32, 'n_layer':16, 'lr':0.0001, 'frames':1000000, 'procs': 16, 'img_encode': 1},
+    #{'algo':'ppo', 'mem_type':'trxl', 'recurrence':1, 'ext_len':64, 'mem_len':32, 'n_layer':32, 'lr':0.0001, 'frames':1000000, 'procs': 16, 'img_encode': 1},
+    #{'algo':'ppo', 'mem_type':'trxl', 'recurrence':1, 'ext_len':64, 'mem_len':32, 'n_layer':64, 'lr':0.0001, 'frames':1000000, 'procs': 16, 'img_encode': 1},
+    #{'algo':'ppo', 'mem_type':'trxli', 'recurrence':16, 'ext_len':64, 'mem_len':32, 'n_layer':8, 'lr':0.0001, 'frames':1000000, 'procs': 16, 'img_encode': 1},
+    #{'algo':'ppo', 'mem_type':'gtrxl-gru', 'recurrence':16, 'ext_len':64, 'mem_len':32, 'n_layer':8, 'lr':0.0001, 'frames':1000000, 'procs': 16, 'img_encode': 1},
 ]
 
 settings = []
@@ -92,7 +141,7 @@ for i, setting in enumerate(settings):
       CUDA_VISIBLE_DEVICES={gpu_idx} python3 -m scripts.train {config}
       " Enter
   """)
-  time.sleep(1)
+  #time.sleep(1)
 
 os.system(f'tmux send-keys -t {session_name}:0.0 "exit" Enter')
 os.system(f"tmux select-layout -t {session_name} even-vertical")

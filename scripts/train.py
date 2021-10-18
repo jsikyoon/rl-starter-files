@@ -78,13 +78,20 @@ parser.add_argument("--mem_len", type=int, default=20, help="memory length")
 ## Parameters for image encoder
 parser.add_argument("--img_encode", type=int, default=0, help="Using image or compact encoding")
 
+## Parameters for VMPO
+parser.add_argument("--alpha", type=float, default=0.1, help="VMPO hyperparameter")
+parser.add_argument("--T_target", type=int, default=10, help="Target update period")
+
+## Parameters for evaluation
+parser.add_argument("--eval_procs", type=int, default=20,
+                    help="number of evaluation processes (default: 20)")
 
 args = parser.parse_args()
 
 if 'trxl' in args.mem_type:
-    args.mem = True
+  args.mem = True
 else:
-    args.mem = args.recurrence > 1
+  args.mem = args.recurrence > 1
 
 args.img_encode = True if args.img_encode==1 else False
 
@@ -94,16 +101,16 @@ if args.env.split('-')[0] == 'Unity':
 # Set run dir
 
 date = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
+default_model_name = f"{args.env}_{args.algo}_ImgEncode{args.img_encode}"
+if args.algo == 'vmpo':
+    default_model_name += f"_alpha{args.alpha}_T{args.T_target}_Epoch{args.epochs}"
+elif args.algo == 'ppo':
+    default_model_name += f"_Epoch{args.epochs}_EntropyCoef{args.entropy_coef}"
 if args.mem:
-    if args.mem_type == 'lstm':
-        default_model_name = f"{args.env}_{args.algo}_{args.mem_type}_ImgEncode{args.img_encode}_"
-        default_model_name += f"Rec{args.recurrence}_Lr{args.lr}_seed{args.seed}_{date}"
-    else:
-        default_model_name = f"{args.env}_{args.algo}_{args.mem_type}_ImgEncode{args.img_encode}_"
-        default_model_name += f"Rec{args.recurrence}_Nlayer{args.n_layer}_ExtLen{args.ext_len}_MemLen{args.mem_len}_"
-        default_model_name += f"Lr{args.lr}_seed{args.seed}_{date}"
-else:
-    default_model_name = f"{args.env}_{args.algo}_seed{args.seed}_{date}"
+    default_model_name += f"_{args.mem_type}_Rec{args.recurrence}"
+    if 'trxl' in args.mem_type:
+        default_model_name += f"_Nlayer{args.n_layer}_ExtLen{args.ext_len}_MemLen{args.mem_len}"
+default_model_name += f"_Lr{args.lr}_seed{args.seed}_{date}"
 
 model_name = args.model or default_model_name
 model_dir = utils.get_model_dir(model_name)
@@ -136,7 +143,9 @@ if args.env.split('-')[0] == 'Unity':
 envs = []
 for i in range(args.procs):
     envs.append(utils.make_env(args.env, args.img_encode, args.seed + 10000 * i))
-eval_env = utils.make_env(args.env, args.img_encode, args.seed + 10000 * args.procs)
+eval_envs = []
+for i in range(args.eval_procs):
+    eval_envs.append(utils.make_env(args.env, args.img_encode, args.seed + 10000 * (args.procs+i)))
 txt_logger.info("Environments loaded\n")
 
 # Load training status
@@ -168,20 +177,25 @@ txt_logger.info("{}\n".format(acmodel))
 # Load algo
 
 if args.algo == "a2c":
-    algo = torch_ac.A2CAlgo(eval_env, envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
+    algo = torch_ac.A2CAlgo(eval_envs, envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
                             args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
                             args.optim_alpha, args.optim_eps, preprocess_obss,
                             mem_type=args.mem_type, ext_len=args.ext_len, mem_len=args.mem_len, n_layer=args.n_layer)
 elif args.algo == "ppo":
-    algo = torch_ac.PPOAlgo(eval_env, envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
+    algo = torch_ac.PPOAlgo(eval_envs, envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
                             args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
                             args.optim_eps, args.clip_eps, args.epochs, args.batch_size, preprocess_obss,
                             mem_type=args.mem_type, ext_len=args.ext_len, mem_len=args.mem_len, n_layer=args.n_layer)
 elif args.algo == "vmpo":
-    algo = torch_ac.VMPOAlgo(eval_env, envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
+    acmodel_learner = ACModel(obs_space, envs[0].action_space, args.mem, args.text,
+                              args.mem_type, args.n_layer, args.n_head, args.ext_len, args.mem_len,
+                              args.img_encode).to(device)
+    acmodel_learner.load_state_dict(acmodel.state_dict())
+    algo = torch_ac.VMPOAlgo(eval_envs, envs, acmodel, acmodel_learner, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
                             args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
                             args.optim_eps, args.clip_eps, args.epochs, args.batch_size, preprocess_obss,
-                            mem_type=args.mem_type, ext_len=args.ext_len, mem_len=args.mem_len, n_layer=args.n_layer)
+                            mem_type=args.mem_type, ext_len=args.ext_len, mem_len=args.mem_len, n_layer=args.n_layer,
+                            alpha=args.alpha, T_target=args.T_target)
 else:
     raise ValueError("Incorrect algorithm name: {}".format(args.algo))
 
@@ -195,6 +209,8 @@ num_frames = status["num_frames"]
 update = status["update"]
 start_time = time.time()
 
+done = False
+done_cnt = 0
 while num_frames < args.frames:
     # Update model parameters
 
@@ -222,19 +238,23 @@ while num_frames < args.frames:
         data += rreturn_per_episode.values()
         header += ["num_frames_" + key for key in num_frames_per_episode.keys()]
         data += num_frames_per_episode.values()
+        # evaluation
+        header += ["eval_return"]
+        eval_return = algo.run_evaluation()
+        data += [eval_return]
         if args.algo == 'vmpo':
-          header += ["value", "loss", "grad_norm"]
-          data += [logs["value"], logs["loss"], logs["grad_norm"]]
+          header += ["log_prob", "value", "policy_loss", "value_loss", "grad_norm"]
+          data += [logs["log_prob"], logs["value"], logs["policy_loss"], logs["value_loss"], logs["grad_norm"]]
 
           txt_logger.info(
-              "U {} | F {:06} | FPS {:04.0f} | D {} | rR:μσmM {:.2f} {:.2f} {:.2f} {:.2f} | F:μσmM {:.1f} {:.1f} {} {} | V {:.3f} | L {:.3f} | ∇ {:.3f}"
+              "U {} | F {:06} | FPS {:04.0f} | D {} | rR:μσmM {:.2f} {:.2f} {:.2f} {:.2f} | F:μσmM {:.1f} {:.1f} {} {} | eR {:.2f} | Lp {:.3f} | V {:.3f} | pL {:.3f} | vL {:.3f} | ∇ {:.3f}"
               .format(*data))
         else:
           header += ["entropy", "value", "policy_loss", "value_loss", "grad_norm"]
           data += [logs["entropy"], logs["value"], logs["policy_loss"], logs["value_loss"], logs["grad_norm"]]
 
           txt_logger.info(
-              "U {} | F {:06} | FPS {:04.0f} | D {} | rR:μσmM {:.2f} {:.2f} {:.2f} {:.2f} | F:μσmM {:.1f} {:.1f} {} {} | H {:.3f} | V {:.3f} | pL {:.3f} | vL {:.3f} | ∇ {:.3f}"
+              "U {} | F {:06} | FPS {:04.0f} | D {} | rR:μσmM {:.2f} {:.2f} {:.2f} {:.2f} | F:μσmM {:.1f} {:.1f} {} {} | eR {:.2f} | H {:.3f} | V {:.3f} | pL {:.3f} | vL {:.3f} | ∇ {:.3f}"
               .format(*data))
 
         header += ["return_" + key for key in return_per_episode.keys()]
@@ -252,9 +272,17 @@ while num_frames < args.frames:
         for field, value in zip(header, data):
             tb_writer.add_scalar(field, value, num_frames)
 
+        if 'IMaze' in args.env:
+            if eval_return > 10: # average return is over 10
+                done_cnt += 1
+            else:
+                done_cnt = 0
+            if done_cnt >= 10: # success over 10 intervals
+                done = True
+
     # Save status
 
-    if args.save_interval > 0 and update % args.save_interval == 0:
+    if (args.save_interval > 0 and update % args.save_interval == 0) or done:
         status = {"num_frames": num_frames, "update": update,
                   "model_state": acmodel.state_dict(), "optimizer_state": algo.optimizer.state_dict()}
         if hasattr(preprocess_obss, "vocab"):
@@ -262,7 +290,12 @@ while num_frames < args.frames:
         utils.save_status(status, model_dir)
         txt_logger.info("Status saved")
 
+    if done:
+        break
+
 for _env in envs:
+    _env.close()
+for _env in eval_envs:
     _env.close()
 if args.env.split('-')[0] == 'Unity':
     display.stop()
