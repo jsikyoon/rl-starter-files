@@ -1,5 +1,7 @@
 # RL Starter Files
 
+This is a backup of Jaesik's old master branch.
+
 RL starter files in order to immediatly train, visualize and evaluate an agent **without writing any line of code**.
 
 <p align="center">
